@@ -70,7 +70,13 @@ export default function Home() {
     const [currentChat, setCurrentChat] = useState(null);
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
-    const [unreadCounts, setUnreadCounts] = useState({});
+    const [unreadCounts, setUnreadCounts] = useState(() => {
+    const saved = localStorage.getItem('dlua_unread');
+        return saved ? JSON.parse(saved) : {};
+    });
+    useEffect(() => {
+        localStorage.setItem('dlua_unread', JSON.stringify(unreadCounts));
+    }, [unreadCounts]);
     const [replyingTo, setReplyingTo] = useState(null);
     const [activeMenuId, setActiveMenuId] = useState(null); 
     const [showEmoji, setShowEmoji] = useState(false);
@@ -183,8 +189,12 @@ export default function Home() {
 
         socket.on('receive_message', handleReceiveMessage); socket.on('message_unsent', handleUnsent); socket.on('message_reacted', handleReacted); socket.on('messages_read', handleMessagesRead);
         socket.on('user_status_changed', handleStatusChanged); socket.on('display_typing', (senderId) => setTypingUsers(prev => ({ ...prev, [senderId]: true }))); socket.on('hide_typing', (senderId) => setTypingUsers(prev => ({ ...prev, [senderId]: false })));
-        socket.on('new_friend_request', () => user && fetchPendingRequests(user.id)); socket.on('friend_request_accepted', () => user && fetchFriends(user.id));
-        
+        socket.on('new_friend_request', () => {
+            if (user) {
+                fetchPendingRequests(user.id);
+                toast.success('Bạn có lời mời kết bạn mới!', { icon: '🔔' });
+            }
+        });
         socket.on('group_added', () => { if (user) fetchGroups(user.id); });
         socket.on('group_updated', (data) => {
             if (user) fetchGroups(user.id);
@@ -526,8 +536,14 @@ export default function Home() {
                 <div className="flex flex-col gap-6 items-center w-full">
                     <div onClick={() => setActiveTab('profile')} className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-xl cursor-pointer shadow-lg overflow-hidden transition-all ${activeTab === 'profile' ? 'ring-4 ring-blue-500 bg-blue-600' : 'bg-blue-500 hover:scale-105'}`}>{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" alt="avatar" /> : user.fullName[0]}</div>
                     <div className="w-8 h-[1px] bg-slate-700 my-2"></div>
-                    <button onClick={() => setActiveTab('chat')} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'chat' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Trò chuyện"><i className="ri-chat-3-fill text-2xl"></i></button>
-                    <button onClick={() => setActiveTab('friends')} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'friends' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Bạn bè"><i className="ri-user-smile-fill text-2xl"></i></button>
+                    <button onClick={() => setActiveTab('chat')} className={`relative w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'chat' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Trò chuyện">
+                        <i className="ri-chat-3-fill text-2xl"></i>
+                        {Object.values(unreadCounts).some(c => c > 0) && <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0a192f] animate-pulse"></span>}
+                    </button>
+                    <button onClick={() => setActiveTab('friends')} className={`relative w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'friends' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Bạn bè">
+                        <i className="ri-user-smile-fill text-2xl"></i>
+                        {pendingRequests.length > 0 && <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0a192f] animate-pulse"></span>}
+                    </button>
                     <button onClick={() => setActiveTab('groups')} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'groups' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Nhóm"><i className="ri-group-fill text-2xl"></i></button>
                     <div className="w-8 h-[1px] bg-slate-700 my-2"></div>
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-12 h-12 rounded-2xl flex items-center justify-center text-slate-400 hover:text-yellow-400 hover:bg-white/10 transition-all" title="Giao diện">
@@ -873,12 +889,18 @@ export default function Home() {
 
             {!currentChat && (
                 <div className="md:hidden fixed bottom-0 left-0 w-full h-[70px] bg-white dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800 flex items-center justify-around z-40 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] pb-safe px-2 transition-colors">
-                    <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'chat' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
-                        <i className={`${activeTab === 'chat' ? 'ri-chat-3-fill' : 'ri-chat-3-line'} text-2xl`}></i>
+                    <button onClick={() => setActiveTab('chat')} className={`relative flex flex-col items-center gap-1 w-16 ${activeTab === 'chat' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                        <div className="relative">
+                            <i className={`${activeTab === 'chat' ? 'ri-chat-3-fill' : 'ri-chat-3-line'} text-2xl`}></i>
+                            {Object.values(unreadCounts).some(c => c > 0) && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-slate-950"></span>}
+                        </div>
                         <span className="text-[10px] font-bold">Chat</span>
                     </button>
-                    <button onClick={() => setActiveTab('friends')} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'friends' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
-                        <i className={`${activeTab === 'friends' ? 'ri-user-smile-fill' : 'ri-user-smile-line'} text-2xl`}></i>
+                    <button onClick={() => setActiveTab('friends')} className={`relative flex flex-col items-center gap-1 w-16 ${activeTab === 'friends' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                        <div className="relative">
+                            <i className={`${activeTab === 'friends' ? 'ri-user-smile-fill' : 'ri-user-smile-line'} text-2xl`}></i>
+                            {pendingRequests.length > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-slate-950"></span>}
+                        </div>
                         <span className="text-[10px] font-bold">Bạn bè</span>
                     </button>
                     <button onClick={() => setActiveTab('groups')} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'groups' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>

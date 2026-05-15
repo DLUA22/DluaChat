@@ -21,17 +21,18 @@ const server = http.createServer(app);
 // Khởi tạo Socket.io với cấu hình CORS cho Frontend
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:5173", // URL của Vite/React
-        methods: ["GET", "POST"]
+        origin: ["http://localhost:5173", "https://dlua-chat.vercel.app"], 
+        methods: ["GET", "POST", "PUT", "DELETE"]
     }
 });
-
 // Khởi tạo kết nối DB
 connectDB();
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: ["http://localhost:5173", "https://dlua-chat.vercel.app"]
+}));
 app.use(morgan('dev'));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 

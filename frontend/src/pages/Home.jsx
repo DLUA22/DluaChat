@@ -591,6 +591,12 @@ export default function Home() {
                         
                         const publicVapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY; 
                         
+                        // [BẮT BUỘC PHẢI CÓ]: Chặn lại để không bị lỗi màn hình trắng nếu quên Key
+                        if (!publicVapidKey) {
+                            console.warn("Chưa đọc được VITE_VAPID_PUBLIC_KEY từ Vercel!");
+                            return; 
+                        }
+                        
                         const subscription = await registration.pushManager.subscribe({
                             userVisibleOnly: true,
                             applicationServerKey: urlBase64ToUint8Array(publicVapidKey)

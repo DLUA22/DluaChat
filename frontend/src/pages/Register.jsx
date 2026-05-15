@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 
 export default function Register() {
     const [formData, setFormData] = useState({ fullName: '', username: '', uniqueName: '', password: '' });
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const navigate = useNavigate();
@@ -78,15 +79,24 @@ export default function Register() {
                         />
                     </div>
 
-                    <div className="space-y-1">
+                   <div className="space-y-1 relative">
                         <input 
-                            type="password" 
+                            // 1. Đổi type ăn theo biến showPassword
+                            type={showPassword ? "text" : "password"} 
                             name="password" 
                             placeholder="Mật khẩu (ít nhất 6 ký tự)" 
                             required minLength="6" 
                             onChange={handleChange}
-                            className="w-full bg-white/90 border border-slate-200 rounded-xl px-5 py-3.5 text-[15px] outline-none focus:border-[#4b8282] focus:ring-2 focus:ring-[#4b8282]/20 transition-all text-slate-700 shadow-sm" 
+                            // 2. Thêm pr-12 vào class
+                            className="w-full bg-white/90 border border-slate-200 rounded-xl px-5 py-3.5 pr-12 text-[15px] outline-none focus:border-[#4b8282] focus:ring-2 focus:ring-[#4b8282]/20 transition-all text-slate-700 shadow-sm" 
                         />
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#4b8282] transition-colors text-xl flex items-center justify-center focus:outline-none"
+                        >
+                            <i className={showPassword ? "ri-eye-off-line" : "ri-eye-line"}></i>
+                        </button>
                     </div>
 
                     <button 

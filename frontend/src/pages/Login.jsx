@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 
 export default function Login() {
     const [formData, setFormData] = useState({ username: '', password: '' });
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const navigate = useNavigate();
 
@@ -52,21 +53,25 @@ export default function Login() {
                         />
                     </div>
                     
-                    <div className="space-y-1">
+                    <div className="space-y-1 relative">
                         <input 
-                            type="password" 
+                            type={showPassword ? "text" : "password"} 
                             name="password"
                             placeholder="Mật khẩu" 
                             required 
                             onChange={(e) => setFormData({...formData, password: e.target.value})}
-                            className="w-full bg-white/90 border border-slate-200 rounded-xl px-5 py-3.5 text-[15px] outline-none focus:border-[#4b8282] focus:ring-2 focus:ring-[#4b8282]/20 transition-all text-slate-700 shadow-sm"
+                            className="w-full bg-white/90 border border-slate-200 rounded-xl px-5 py-3.5 pr-12 text-[15px] outline-none focus:border-[#4b8282] focus:ring-2 focus:ring-[#4b8282]/20 transition-all text-slate-700 shadow-sm"
                         />
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-[#4b8282] transition-colors text-xl flex items-center justify-center focus:outline-none"
+                        >
+                            <i className={showPassword ? "ri-eye-off-line" : "ri-eye-line"}></i>
+                        </button>
                     </div>
 
                     <div className="text-right mt-2">
-                        <a href="#" className="text-[13px] text-[#5c9898] hover:text-[#386262] font-medium transition-colors">
-                            Quên tên đăng nhập hoặc mật khẩu?
-                        </a>
                     </div>
 
                     <button 

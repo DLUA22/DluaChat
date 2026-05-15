@@ -278,7 +278,37 @@ export default function Home() {
 
     // CALL & WEBRTC
     const getMedia = async (type) => { try { const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true }); setLocalStream(stream); return stream; } catch (err) { toast.error("Cấp quyền Camera/Micro!"); return null; } };
-    const createPeer = (targetId, stream) => { const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }); peerRef.current = peer; stream.getTracks().forEach(track => peer.addTrack(track, stream)); peer.ontrack = (e) => setRemoteStream(e.streams[0]); peer.onicecandidate = (e) => { if (e.candidate) socket.emit('ice_candidate', { to: targetId, candidate: e.candidate }); }; return peer; };
+    const createPeer = (targetId, stream) => { 
+        const peer = new RTCPeerConnection({ 
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                
+                {
+                    urls: "turn:global.relay.metered.ca:80",
+                    username: "ae0da5fe20e220a4ba893339",
+                    credential: "WQ/h5RWQk6hOZevf"
+                },
+                {
+                    urls: "turn:global.relay.metered.ca:443",
+                    username: "ae0da5fe20e220a4ba893339",
+                    credential: "WQ/h5RWQk6hOZevf"
+                },
+                {
+                    urls: "turn:global.relay.metered.ca:443?transport=tcp",
+                    username: "ae0da5fe20e220a4ba893339",
+                    credential: "WQ/h5RWQk6hOZevf"
+                }
+            ] 
+        }); 
+        
+        peerRef.current = peer; 
+        stream.getTracks().forEach(track => peer.addTrack(track, stream)); 
+        peer.ontrack = (e) => setRemoteStream(e.streams[0]); 
+        peer.onicecandidate = (e) => { 
+            if (e.candidate) socket.emit('ice_candidate', { to: targetId, candidate: e.candidate }); 
+        }; 
+        return peer; 
+    };
     const startCall = async (type) => { if (!currentChat || currentChat.isGroup) { toast.error("Chức năng gọi Nhóm chưa được hỗ trợ!"); return; } const stream = await getMedia(type); if (!stream) return; setCallStatus('calling'); setCallData({ name: currentChat.fullName, type, toId: currentChat._id }); const peer = createPeer(currentChat._id, stream); const offer = await peer.createOffer(); await peer.setLocalDescription(offer); socket.emit('call_user', { userToCall: currentChat._id, from: user.id, name: user.fullName, type, offer }); };
     const answerCall = async () => { const stream = await getMedia(callData.type); if (!stream) return; setCallStatus('active'); const peer = createPeer(callData.from, stream); await peer.setRemoteDescription(new RTCSessionDescription(callData.offer)); const answer = await peer.createAnswer(); await peer.setLocalDescription(answer); socket.emit('answer_call', { to: callData.from, answer }); };
     const endCall = () => { const targetId = callStatus === 'ringing' ? callData.from : (currentChat?._id || callData?.toId); socket.emit('end_call', { to: targetId }); let isMissed = false, duration = 0; if (callStatus === 'calling' || callStatus === 'ringing') isMissed = true; else if (callStatus === 'active') duration = Math.floor((Date.now() - callStartTime) / 1000); if (callStatus !== 'ringing') sendCallLog(targetId, callData.type, duration, isMissed); endCallLocally(); };

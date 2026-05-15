@@ -595,14 +595,36 @@ export default function Home() {
 
                             <div className="w-full h-full relative">
                                 {callData?.type === 'video' ? (
-                                    <div className="w-full h-full bg-black relative">
-                                        <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                                        <div className="absolute top-12 right-4 md:top-auto md:bottom-8 md:right-8 w-24 h-36 md:w-48 md:h-64 bg-slate-800 rounded-xl md:rounded-2xl overflow-hidden shadow-2xl border border-white/20 md:border-2 md:border-slate-600/50 z-10 cursor-pointer">
-                                            <video ref={myVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover transform scale-x-[-1] transition-all ${isVideoOff ? 'opacity-0' : 'opacity-100'}`} />
+                                    <div className="w-full h-full bg-black relative flex items-center justify-center">
+                                        
+                                        {/* VIDEO NGƯỜI KIA: 
+                                            Đổi 'object-cover' thành 'object-contain' để KHÔNG BAO GIỜ bị cắt xén.
+                                            Nó sẽ tự thu nhỏ/phóng to để hiển thị trọn vẹn 100% màn hình chia sẻ hoặc camera. 
+                                        */}
+                                        <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-contain" />
+                                        
+                                        {/* VIDEO CỦA MÌNH: 
+                                            - Mobile: Giữ nguyên khung dọc (w-24 h-36).
+                                            - Desktop: Đổi thành KHUNG NGANG (md:w-64 md:h-48) để vừa khít Camera Laptop.
+                                        */}
+                                        <div className="absolute top-12 right-4 md:top-auto md:bottom-8 md:right-8 w-24 h-36 md:w-64 md:h-48 bg-slate-800 rounded-xl md:rounded-2xl overflow-hidden shadow-2xl border border-white/20 md:border-2 md:border-slate-600/50 z-10 cursor-pointer">
+                                            
+                                            {/* TẮT LẬT GƯƠNG KHI CHIA SẺ MÀN HÌNH: 
+                                                Nếu isScreenSharing = true thì bỏ class scale-x-[-1] để chữ không bị ngược 
+                                            */}
+                                            <video 
+                                                ref={myVideoRef} 
+                                                autoPlay 
+                                                playsInline 
+                                                muted 
+                                                className={`w-full h-full object-cover transition-all ${isScreenSharing ? '' : 'transform scale-x-[-1]'} ${isVideoOff ? 'opacity-0' : 'opacity-100'}`} 
+                                            />
+                                            
                                             {isVideoOff && <div className="absolute inset-0 flex items-center justify-center text-white text-2xl md:text-4xl bg-slate-800">🚫</div>}
                                         </div>
                                     </div>
                                 ) : (
+                                    /* Giao diện gọi Thoại (Giữ nguyên) */
                                     <div className="flex flex-col md:flex-row gap-8 md:gap-16 items-center justify-center w-full h-full pb-20">
                                         <div className={`w-28 h-28 md:w-40 md:h-40 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-4xl md:text-5xl text-white shadow-[0_0_50px_rgba(99,102,241,0.5)] ${callStatus === 'calling' ? 'animate-pulse' : ''}`}>
                                             {user?.avatar ? <img src={user.avatar} className="w-full h-full rounded-full object-cover"/> : user?.fullName[0]}

@@ -28,7 +28,7 @@ router.post('/upload', upload.single('file'), (req, res) => {
         
         console.log("✅ ĐÃ NHẬN FILE THÀNH CÔNG:", req.file.originalname);
         
-        const fileUrl = `http://localhost:5000/uploads/${req.file.filename}`;
+        const fileUrl = `https://dlua-chat-api.onrender.com/uploads/${req.file.filename}`;
         res.status(200).json({ url: fileUrl, name: req.file.originalname });
     } catch (error) {
         console.error("❌ LỖI SERVER KHI UPLOAD:", error);

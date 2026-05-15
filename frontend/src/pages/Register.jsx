@@ -15,7 +15,7 @@ export default function Register() {
         e.preventDefault();
         setError('');
         try {
-            await axios.post('http://localhost:5000/api/auth/register', formData);
+            await axios.post('https://dlua-chat-api.onrender.com/api/auth/register', formData);
             setSuccess('Khởi tạo tài khoản thành công! Đang chuyển hướng...');
             setTimeout(() => navigate('/login'), 2000);
         } catch (err) {

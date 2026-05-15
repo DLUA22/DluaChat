@@ -10,7 +10,7 @@ import CryptoJS from 'crypto-js';
 
 const SECRET_KEY = "DluaChat_Sieu_Bao_Mat_2026";
 
-const socket = io('http://localhost:5000');
+const socket = io('https://dlua-chat-api.onrender.com');
 
 // --- CÁC HÀM TIỆN ÍCH BẢO MẬT & THỜI GIAN ---
 const encryptText = (text) => {
@@ -157,7 +157,7 @@ export default function Home() {
                 
                 if (!isGroupMsg) {
                     socket.emit('mark_read', { senderId: incomingChatId, receiverId: user.id, readAt: new Date() });
-                    axios.post('http://localhost:5000/api/messages/mark-read', { senderId: incomingChatId, receiverId: user.id });
+                    axios.post('https://dlua-chat-api.onrender.com/api/messages/mark-read', { senderId: incomingChatId, receiverId: user.id });
                 }
                 setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
             } 
@@ -225,11 +225,11 @@ export default function Home() {
     }, [localStream, remoteStream, callStatus]);
 
     const fetchInitialData = (userId) => { fetchPendingRequests(userId); fetchFriends(userId); fetchGroups(userId); };
-    const fetchFriends = async (userId) => { try { const res = await axios.get(`http://localhost:5000/api/auth/friends/${userId}`); setFriends(res.data); } catch (err) {} };
-    const fetchPendingRequests = async (userId) => { try { const res = await axios.get(`http://localhost:5000/api/auth/friend-request/pending/${userId}`); setPendingRequests(res.data); } catch (err) {} };
+    const fetchFriends = async (userId) => { try { const res = await axios.get(`https://dlua-chat-api.onrender.com/api/auth/friends/${userId}`); setFriends(res.data); } catch (err) {} };
+    const fetchPendingRequests = async (userId) => { try { const res = await axios.get(`https://dlua-chat-api.onrender.com/api/auth/friend-request/pending/${userId}`); setPendingRequests(res.data); } catch (err) {} };
     const fetchGroups = async (userId) => { 
         try { 
-            const res = await axios.get(`http://localhost:5000/api/groups/${userId}`); 
+            const res = await axios.get(`https://dlua-chat-api.onrender.com/api/groups/${userId}`); 
             const formatted = res.data.map(g => ({ ...g, isGroup: true, fullName: g.name })); 
             setGroups(formatted); 
             const groupIds = formatted.map(g => g._id);
@@ -243,7 +243,7 @@ export default function Home() {
         if (pageNum > 1) setIsLoadingMore(true);
         try {
             const isGroupFlag = currentChat.isGroup ? 'true' : 'false';
-            const res = await axios.get(`http://localhost:5000/api/messages/${user.id}/${currentChat._id}?page=${pageNum}&limit=20&isGroup=${isGroupFlag}`);
+            const res = await axios.get(`https://dlua-chat-api.onrender.com/api/messages/${user.id}/${currentChat._id}?page=${pageNum}&limit=20&isGroup=${isGroupFlag}`);
             
             // Giải mã an toàn không sợ lỗi
             const fetchedMessages = res.data.map(msg => {
@@ -257,7 +257,7 @@ export default function Home() {
                 setMessages(fetchedMessages);
                 const hasUnread = fetchedMessages.some(m => getSenderId(m.senderId) !== user.id && !m.isRead);
                 if (hasUnread && !currentChat.isGroup) {
-                    await axios.post('http://localhost:5000/api/messages/mark-read', { senderId: currentChat._id, receiverId: user.id });
+                    await axios.post('https://dlua-chat-api.onrender.com/api/messages/mark-read', { senderId: currentChat._id, receiverId: user.id });
                     socket.emit('mark_read', { senderId: currentChat._id, receiverId: user.id, readAt: new Date() });
                 }
                 setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
@@ -283,7 +283,7 @@ export default function Home() {
     const answerCall = async () => { const stream = await getMedia(callData.type); if (!stream) return; setCallStatus('active'); const peer = createPeer(callData.from, stream); await peer.setRemoteDescription(new RTCSessionDescription(callData.offer)); const answer = await peer.createAnswer(); await peer.setLocalDescription(answer); socket.emit('answer_call', { to: callData.from, answer }); };
     const endCall = () => { const targetId = callStatus === 'ringing' ? callData.from : (currentChat?._id || callData?.toId); socket.emit('end_call', { to: targetId }); let isMissed = false, duration = 0; if (callStatus === 'calling' || callStatus === 'ringing') isMissed = true; else if (callStatus === 'active') duration = Math.floor((Date.now() - callStartTime) / 1000); if (callStatus !== 'ringing') sendCallLog(targetId, callData.type, duration, isMissed); endCallLocally(); };
     const endCallLocally = () => { if (peerRef.current) peerRef.current.close(); peerRef.current = null; if (localStream) localStream.getTracks().forEach(t => t.stop()); setLocalStream(null); setRemoteStream(null); setCallStatus('idle'); setCallData(null); setIsMuted(false); setIsVideoOff(false); setCallStartTime(null); };
-    const sendCallLog = async (receiverId, type, duration, isMissed) => { const messageData = { senderId: user.id, receiverId, text: '', type: 'call_log', callDuration: duration, isMissedCall: isMissed, fileName: type }; try { const res = await axios.post('http://localhost:5000/api/messages/send', messageData); const msgToSend = { ...res.data, senderName: user.fullName }; setMessages((prev) => [...prev, msgToSend]); socket.emit('send_message', msgToSend); setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); } catch (err) {} };
+    const sendCallLog = async (receiverId, type, duration, isMissed) => { const messageData = { senderId: user.id, receiverId, text: '', type: 'call_log', callDuration: duration, isMissedCall: isMissed, fileName: type }; try { const res = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); const msgToSend = { ...res.data, senderName: user.fullName }; setMessages((prev) => [...prev, msgToSend]); socket.emit('send_message', msgToSend); setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); } catch (err) {} };
     const toggleAudio = () => { if (localStream) { const track = localStream.getAudioTracks()[0]; if (track) { track.enabled = !track.enabled; setIsMuted(!track.enabled); } } };
     const toggleVideo = () => { if (localStream) { const track = localStream.getVideoTracks()[0]; if (track) { track.enabled = !track.enabled; setIsVideoOff(!track.enabled); } } };
 
@@ -292,7 +292,7 @@ export default function Home() {
         e.preventDefault();
         if (!newGroupName.trim() || selectedMembers.length === 0) return toast.error("Nhập tên và chọn ít nhất 1 bạn!");
         try {
-            await axios.post('http://localhost:5000/api/groups/create', { name: newGroupName, members: selectedMembers, admin: user.id });
+            await axios.post('https://dlua-chat-api.onrender.com/api/groups/create', { name: newGroupName, members: selectedMembers, admin: user.id });
             socket.emit('new_group_created', { members: [...selectedMembers, user.id] });
             toast.success("Tạo nhóm thành công!");
             setNewGroupName(''); setSelectedMembers([]);
@@ -310,7 +310,7 @@ export default function Home() {
                         toast.dismiss(t.id);
                         try {
                             const sysMsg = { senderId: user.id, groupId: currentChat._id, text: `${user.fullName} đã rời nhóm`, type: 'system' };
-                            const resMsg = await axios.post('http://localhost:5000/api/messages/send', sysMsg);
+                            const resMsg = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', sysMsg);
                             const msgToSend = { ...resMsg.data, senderName: user.fullName };
 
                             currentChat.members.forEach(m => {
@@ -320,7 +320,7 @@ export default function Home() {
                                 }
                             });
 
-                            await axios.post('http://localhost:5000/api/groups/leave', { groupId: currentChat._id, userId: user.id });
+                            await axios.post('https://dlua-chat-api.onrender.com/api/groups/leave', { groupId: currentChat._id, userId: user.id });
                             toast.success("Đã rời nhóm");
                             setCurrentChat(null);
                             fetchGroups(user.id);
@@ -350,7 +350,7 @@ export default function Home() {
         }; 
         
         try { 
-            const res = await axios.post('http://localhost:5000/api/messages/send', messageData); 
+            const res = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); 
             const socketData = { ...res.data, senderName: user.fullName };
             
             // TUYỆT CHIÊU FRONTEND ĐỂ FIX ĐỒNG BỘ NHÓM MÀ KHÔNG CẦN SỬA SERVER.JS
@@ -373,18 +373,18 @@ export default function Home() {
         } catch (err) { toast.error("Lỗi gửi tin"); } 
     };
 
-    const handleFileUpload = async (e, type) => { const file = e.target.files[0]; if (!file) return; const formData = new FormData(); formData.append('file', file); try { const uploadRes = await axios.post('http://localhost:5000/api/messages/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } }); const payloadKey = type === 'image' ? 'imageUrl' : type === 'video' ? 'videoUrl' : 'fileUrl'; const isGroup = currentChat.isGroup; const messageData = { senderId: user.id, receiverId: isGroup ? null : currentChat._id, groupId: isGroup ? currentChat._id : null, text: '', [payloadKey]: uploadRes.data.url, fileName: type !== 'image' ? uploadRes.data.name : null, replyTo: replyingTo ? replyingTo._id : null, type: 'text' }; const msgRes = await axios.post('http://localhost:5000/api/messages/send', messageData); const msgToSend = { ...msgRes.data, senderName: user.fullName }; setMessages((prev) => [...prev, msgToSend]); if (isGroup) { currentChat.members.forEach(m => { if(m._id !== user.id) socket.emit('send_message', { ...msgToSend, receiverId: m._id, groupId: currentChat._id }); }); } else { socket.emit('send_message', msgToSend); } setReplyingTo(null); setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); } catch (err) { toast.error(`Lỗi gửi file`); } e.target.value = null; };
-    const handleUnsend = async (messageId) => { try { await axios.put(`http://localhost:5000/api/messages/unsend/${messageId}`); setMessages((prev) => prev.map(m => m._id === messageId ? { ...m, isUnsent: true } : m)); if (currentChat.isGroup) { currentChat.members.forEach(m => { if(m._id !== user.id) socket.emit('unsend_message', { messageId, receiverId: m._id, groupId: currentChat._id }); }); } else socket.emit('unsend_message', { messageId, receiverId: currentChat._id }); setActiveMenuId(null); } catch (err) { toast.error("Lỗi thu hồi"); } };
-    const handleReact = async (messageId, emoji) => { try { const res = await axios.put(`http://localhost:5000/api/messages/react/${messageId}`, { userId: user.id, emoji }); setMessages((prev) => prev.map(m => m._id === messageId ? { ...m, reactions: res.data } : m)); if (currentChat.isGroup) { currentChat.members.forEach(m => { if(m._id !== user.id) socket.emit('react_message', { messageId, reactions: res.data, receiverId: m._id, groupId: currentChat._id }); }); } else socket.emit('react_message', { messageId, reactions: res.data, receiverId: currentChat._id }); setActiveMenuId(null); } catch (err) {} };
+    const handleFileUpload = async (e, type) => { const file = e.target.files[0]; if (!file) return; const formData = new FormData(); formData.append('file', file); try { const uploadRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } }); const payloadKey = type === 'image' ? 'imageUrl' : type === 'video' ? 'videoUrl' : 'fileUrl'; const isGroup = currentChat.isGroup; const messageData = { senderId: user.id, receiverId: isGroup ? null : currentChat._id, groupId: isGroup ? currentChat._id : null, text: '', [payloadKey]: uploadRes.data.url, fileName: type !== 'image' ? uploadRes.data.name : null, replyTo: replyingTo ? replyingTo._id : null, type: 'text' }; const msgRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); const msgToSend = { ...msgRes.data, senderName: user.fullName }; setMessages((prev) => [...prev, msgToSend]); if (isGroup) { currentChat.members.forEach(m => { if(m._id !== user.id) socket.emit('send_message', { ...msgToSend, receiverId: m._id, groupId: currentChat._id }); }); } else { socket.emit('send_message', msgToSend); } setReplyingTo(null); setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); } catch (err) { toast.error(`Lỗi gửi file`); } e.target.value = null; };
+    const handleUnsend = async (messageId) => { try { await axios.put(`https://dlua-chat-api.onrender.com/api/messages/unsend/${messageId}`); setMessages((prev) => prev.map(m => m._id === messageId ? { ...m, isUnsent: true } : m)); if (currentChat.isGroup) { currentChat.members.forEach(m => { if(m._id !== user.id) socket.emit('unsend_message', { messageId, receiverId: m._id, groupId: currentChat._id }); }); } else socket.emit('unsend_message', { messageId, receiverId: currentChat._id }); setActiveMenuId(null); } catch (err) { toast.error("Lỗi thu hồi"); } };
+    const handleReact = async (messageId, emoji) => { try { const res = await axios.put(`https://dlua-chat-api.onrender.com/api/messages/react/${messageId}`, { userId: user.id, emoji }); setMessages((prev) => prev.map(m => m._id === messageId ? { ...m, reactions: res.data } : m)); if (currentChat.isGroup) { currentChat.members.forEach(m => { if(m._id !== user.id) socket.emit('react_message', { messageId, reactions: res.data, receiverId: m._id, groupId: currentChat._id }); }); } else socket.emit('react_message', { messageId, reactions: res.data, receiverId: currentChat._id }); setActiveMenuId(null); } catch (err) {} };
     const handleLogout = () => { localStorage.clear(); navigate('/login'); };
 
-    const handleGlobalSearch = async (e) => { e.preventDefault(); setSearchResult(null); if (!globalSearchQuery.trim()) return; try { const res = await axios.get(`http://localhost:5000/api/auth/search?uniqueName=${globalSearchQuery}`); setSearchResult(res.data); } catch (err) { toast.error('Không tìm thấy người dùng'); } };
-    const handleSendRequest = async (receiverId) => { try { await axios.post('http://localhost:5000/api/auth/friend-request/send', { senderId: user.id, receiverId }); toast.success('Đã gửi lời mời!'); setSearchResult(null); setGlobalSearchQuery(''); socket.emit('send_friend_request', { receiverId }); } catch (err) { toast.error('Lỗi gửi lời mời'); } };
-    const handleRespondRequest = async (req, status) => { try { await axios.post('http://localhost:5000/api/auth/friend-request/respond', { requestId: req._id, status }); if (status === 'accepted') { socket.emit('accept_friend_request', { receiverId: req.sender._id }); } fetchInitialData(user.id); } catch (err) {} };
-    const handleUnfriend = (friendId) => { toast((t) => ( <div className="flex flex-col gap-3 min-w-[200px]"><p className="text-[13px] font-bold text-slate-800 text-center">Chắc chắn muốn xóa người này?</p><div className="flex gap-2 mt-1"><button onClick={async () => { toast.dismiss(t.id); try { await axios.post('http://localhost:5000/api/auth/unfriend', { userId: user.id, friendId }); toast.success("Đã xóa bạn bè", { duration: 2000 }); if (currentChat && currentChat._id === friendId) setCurrentChat(null); fetchFriends(user.id); } catch (err) { toast.error("Lỗi khi xóa bạn bè"); } }} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-1.5 rounded-lg text-xs font-bold transition-colors">Xóa luôn</button><button onClick={() => toast.dismiss(t.id)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-1.5 rounded-lg text-xs font-bold transition-colors">Hủy bỏ</button></div></div> ), { duration: Infinity, position: 'top-center' }); };
+    const handleGlobalSearch = async (e) => { e.preventDefault(); setSearchResult(null); if (!globalSearchQuery.trim()) return; try { const res = await axios.get(`https://dlua-chat-api.onrender.com/api/auth/search?uniqueName=${globalSearchQuery}`); setSearchResult(res.data); } catch (err) { toast.error('Không tìm thấy người dùng'); } };
+    const handleSendRequest = async (receiverId) => { try { await axios.post('hhttps://dlua-chat-api.onrender.com/api/auth/friend-request/send', { senderId: user.id, receiverId }); toast.success('Đã gửi lời mời!'); setSearchResult(null); setGlobalSearchQuery(''); socket.emit('send_friend_request', { receiverId }); } catch (err) { toast.error('Lỗi gửi lời mời'); } };
+    const handleRespondRequest = async (req, status) => { try { await axios.post('https://dlua-chat-api.onrender.com/api/auth/friend-request/respond', { requestId: req._id, status }); if (status === 'accepted') { socket.emit('accept_friend_request', { receiverId: req.sender._id }); } fetchInitialData(user.id); } catch (err) {} };
+    const handleUnfriend = (friendId) => { toast((t) => ( <div className="flex flex-col gap-3 min-w-[200px]"><p className="text-[13px] font-bold text-slate-800 text-center">Chắc chắn muốn xóa người này?</p><div className="flex gap-2 mt-1"><button onClick={async () => { toast.dismiss(t.id); try { await axios.post('https://dlua-chat-api.onrender.com/api/auth/unfriend', { userId: user.id, friendId }); toast.success("Đã xóa bạn bè", { duration: 2000 }); if (currentChat && currentChat._id === friendId) setCurrentChat(null); fetchFriends(user.id); } catch (err) { toast.error("Lỗi khi xóa bạn bè"); } }} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-1.5 rounded-lg text-xs font-bold transition-colors">Xóa luôn</button><button onClick={() => toast.dismiss(t.id)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-1.5 rounded-lg text-xs font-bold transition-colors">Hủy bỏ</button></div></div> ), { duration: Infinity, position: 'top-center' }); };
     
-    const handleSaveAvatar = async () => { if (editorRef.current) { const canvas = editorRef.current.getImageScaledToCanvas(); canvas.toBlob(async (blob) => { const formData = new FormData(); formData.append('file', blob, 'avatar.png'); try { const uploadRes = await axios.post('http://localhost:5000/api/messages/upload', formData); const avatarUrl = uploadRes.data.url; const res = await axios.post('http://localhost:5000/api/auth/update-avatar', { userId: user.id, avatarUrl }); const updatedUser = { ...user, avatar: res.data.avatar }; setUser(updatedUser); localStorage.setItem('user', JSON.stringify(updatedUser)); setAvatarFile(null); toast.success("Đã cập nhật Avatar!"); } catch (err) { toast.error("Lỗi cập nhật Avatar"); } }); } };
-    const handleChangePassword = async (e) => { e.preventDefault(); try { await axios.post('http://localhost:5000/api/auth/change-password', { userId: user.id, oldPassword: passwords.oldPass, newPassword: passwords.newPass }); toast.success("Đổi mật khẩu thành công!"); setPasswords({ oldPass: '', newPass: '' }); } catch (err) { toast.error(err.response?.data?.message || "Lỗi đổi mật khẩu"); } };
+    const handleSaveAvatar = async () => { if (editorRef.current) { const canvas = editorRef.current.getImageScaledToCanvas(); canvas.toBlob(async (blob) => { const formData = new FormData(); formData.append('file', blob, 'avatar.png'); try { const uploadRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/upload', formData); const avatarUrl = uploadRes.data.url; const res = await axios.post('https://dlua-chat-api.onrender.com/api/auth/update-avatar', { userId: user.id, avatarUrl }); const updatedUser = { ...user, avatar: res.data.avatar }; setUser(updatedUser); localStorage.setItem('user', JSON.stringify(updatedUser)); setAvatarFile(null); toast.success("Đã cập nhật Avatar!"); } catch (err) { toast.error("Lỗi cập nhật Avatar"); } }); } };
+    const handleChangePassword = async (e) => { e.preventDefault(); try { await axios.post('https://dlua-chat-api.onrender.com/api/auth/change-password', { userId: user.id, oldPassword: passwords.oldPass, newPassword: passwords.newPass }); toast.success("Đổi mật khẩu thành công!"); setPasswords({ oldPass: '', newPass: '' }); } catch (err) { toast.error(err.response?.data?.message || "Lỗi đổi mật khẩu"); } };
 
     if (!user) return null;
     const combinedChatList = [...friends, ...groups].filter(f => f.fullName.toLowerCase().includes(localChatSearch.toLowerCase()));

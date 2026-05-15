@@ -17,14 +17,16 @@ function App() {
           <SplashScreen key="splash" onFinish={() => setShowSplash(false)} />
         )}
       </AnimatePresence>
-      {!showSplash && (
+
+      <div style={{ display: showSplash ? 'none' : 'block', height: '100%' }}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
         </Routes>
-      )}
+      </div>
     </BrowserRouter>
   );
 }
+
 export default App;

@@ -376,60 +376,88 @@ export default function Home() {
         if (!localStream) return;
         try {
             const newMode = !isFrontCamera;
-            // 1. Yêu cầu xin cấp quyền Camera mới (trước hoặc sau)
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: newMode ? "user" : "environment" }, 
-                audio: true 
-            });
+            
+            // BƯỚC 1: Bắt buộc phải TẮT camera hiện tại trước khi mở camera mới (Đặc trị lỗi Mobile)
+            localStream.getVideoTracks().forEach(track => track.stop());
+
+            // BƯỚC 2: Ép hệ thống dùng đúng Camera mong muốn
+            let stream;
+            try {
+                // Thử ép chính xác Camera sau (Dùng exact cho điện thoại)
+                const videoConstraints = newMode ? { facingMode: "user" } : { facingMode: { exact: "environment" } };
+                stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
+            } catch (fallbackError) {
+                // Nếu thiết bị không hỗ trợ exact (VD: Laptop), dùng chế độ linh hoạt
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: newMode ? "user" : "environment" } });
+            }
             
             const newVideoTrack = stream.getVideoTracks()[0];
             
-            // 2. Tìm ống dẫn Video đang truyền đi và Tráo lõi mới vào
+            // BƯỚC 3: Tráo lõi Video đang truyền đi
             const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
             if (sender) sender.replaceTrack(newVideoTrack);
             
-            // 3. Tắt Camera cũ đi cho đỡ tốn pin
-            localStream.getVideoTracks()[0].stop();
-            
-            // 4. Cập nhật lại khung hình của chính mình trên web
+            // BƯỚC 4: Cập nhật lại khung hình của mình (Giữ nguyên luồng âm thanh cũ)
             const newLocalStream = new MediaStream([newVideoTrack, localStream.getAudioTracks()[0]]);
             setLocalStream(newLocalStream);
             setIsFrontCamera(newMode);
             setIsScreenSharing(false); 
-        } catch (error) { toast.error("Không thể chuyển Camera!"); }
+        } catch (error) { 
+            toast.error("Thiết bị không hỗ trợ Camera này!"); 
+        }
     };
 
-    // --- TÍNH NĂNG CHIA SẺ MÀN HÌNH ---
+    // --- TÍNH NĂNG CHIA SẺ MÀN HÌNH ĐÃ FIX LỖI NÚT DỪNG ---
     const toggleScreenShare = async () => {
         if (!localStream) return;
+
+        // CHẶN NGAY TRÊN ĐIỆN THOẠI ĐỂ KHÔNG BỊ LỖI TREO APP
+        if (!navigator.mediaDevices.getDisplayMedia || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+            return toast.error("Chia sẻ màn hình chỉ hỗ trợ trên Máy tính/Laptop!");
+        }
+
         try {
             if (isScreenSharing) {
-                // Đang chia sẻ -> Tắt đi, quay về Camera
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: isFrontCamera ? "user" : "environment" }, audio: true });
+                // ĐANG CHIA SẺ -> TẮT BẰNG NÚT CỦA WEB -> BẬT LẠI CAMERA
+                localStream.getVideoTracks().forEach(track => track.stop());
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: isFrontCamera ? "user" : "environment" } });
                 const videoTrack = stream.getVideoTracks()[0];
+                
                 const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
                 if (sender) sender.replaceTrack(videoTrack);
                 
-                localStream.getVideoTracks()[0].stop();
                 setLocalStream(new MediaStream([videoTrack, localStream.getAudioTracks()[0]]));
                 setIsScreenSharing(false);
             } else {
-                // Đang Camera -> Xin quyền Quay màn hình
+                // ĐANG CAMERA -> BẬT CHIA SẺ
                 const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
                 const screenTrack = screenStream.getVideoTracks()[0];
                 
                 const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
                 if (sender) sender.replaceTrack(screenTrack);
                 
-                localStream.getVideoTracks()[0].stop();
+                localStream.getVideoTracks().forEach(track => track.stop());
                 setLocalStream(new MediaStream([screenTrack, localStream.getAudioTracks()[0]]));
                 setIsScreenSharing(true);
 
-                // Nếu người dùng bấm nút "Dừng chia sẻ" mặc định của trình duyệt
-                screenTrack.onended = () => { toggleScreenShare(); };
+                // [FIX LỖI]: BẮT SỰ KIỆN KHI BẤM NÚT "DỪNG CHIA SẺ" CỦA TRÌNH DUYỆT
+                screenTrack.onended = async () => { 
+                    setIsScreenSharing(false);
+                    try {
+                        // Tự động xin lại quyền Camera
+                        const camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: isFrontCamera ? "user" : "environment" } });
+                        const camTrack = camStream.getVideoTracks()[0];
+                        
+                        const currentSender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
+                        if (currentSender) currentSender.replaceTrack(camTrack);
+                        
+                        setLocalStream(new MediaStream([camTrack, localStream.getAudioTracks()[0]]));
+                    } catch (e) {
+                        toast.error("Vui lòng bật lại Camera!");
+                    }
+                };
             }
         } catch (error) { 
-            // Báo lỗi nếu người dùng bấm "Hủy" xin quyền
             if (error.name !== 'NotAllowedError') toast.error("Lỗi chia sẻ màn hình!"); 
         }
     };

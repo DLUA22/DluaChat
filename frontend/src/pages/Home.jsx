@@ -589,7 +589,7 @@ export default function Home() {
                     if (permission === 'granted') {
                         const registration = await navigator.serviceWorker.ready;
                         
-                        const publicVapidKey = import.meta.env.VAPID_PUBLIC_KEY; 
+                        const publicVapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY; 
                         
                         const subscription = await registration.pushManager.subscribe({
                             userVisibleOnly: true,

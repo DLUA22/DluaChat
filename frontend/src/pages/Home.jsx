@@ -677,7 +677,7 @@ export default function Home() {
                     <div className="flex-1 flex flex-col items-center justify-center text-center px-10">
                         <div className="w-24 h-24 bg-[#f8fafc] dark:bg-slate-900 rounded-[40px] flex items-center justify-center mb-8 shadow-inner border border-white dark:border-slate-700 text-5xl">✨</div>
                         <h3 className="text-3xl font-bold text-slate-800 dark:text-white mb-3">DluaChat Pro</h3>
-                        <p className="text-slate-400 max-w-sm text-[15px]">Giao diện Mobile App Native đã sẵn sàng!</p>
+                        <p className="text-slate-400 max-w-sm text-[15px]">Đã Sẵn Sàng!</p>
                     </div>
                 ) : (
                     <>

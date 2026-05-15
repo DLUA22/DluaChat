@@ -37,7 +37,7 @@ export default function SplashScreen({ onFinish }) {
                     <img 
                         src="/logo.png" 
                         alt="DluaChat Logo" 
-                        className="w-32 h-32 md:w-40 md:h-40 object-contain drop-shadow-[0_0_30px_rgba(59,130,246,0.6)]" 
+                        className="w-48 h-48 md:w-64 md:h-64 object-contain drop-shadow-[0_0_30px_rgba(59,130,246,0.6)]" 
                     />
                 </motion.div>
 

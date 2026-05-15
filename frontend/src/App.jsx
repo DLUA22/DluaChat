@@ -5,7 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import SplashScreen from './components/SplashScreen'; 
+import SplashScreen from "./pages/SplashScreen";
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);

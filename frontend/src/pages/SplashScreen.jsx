@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 
 export default function SplashScreen({ onFinish }) {
     useEffect(() => {
-        // App sẽ hiện màn hình chờ trong 2.5 giây rồi tự động gọi onFinish để tắt đi
         const timer = setTimeout(() => {
             onFinish();
         }, 2500);

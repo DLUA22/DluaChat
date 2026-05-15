@@ -90,6 +90,8 @@ export default function Home() {
     const typingTimeoutRef = useRef(null);
     
     const [callStatus, setCallStatus] = useState('idle'); 
+    const [isFrontCamera, setIsFrontCamera] = useState(true);
+    const [isScreenSharing, setIsScreenSharing] = useState(false);
     const [callData, setCallData] = useState(null); 
     const [localStream, setLocalStream] = useState(null);
     const [remoteStream, setRemoteStream] = useState(null);
@@ -232,6 +234,11 @@ export default function Home() {
         });
 
         socket.on('call_ended', () => endCallLocally());
+        socket.on('force_logout', () => {
+            toast.error('Tài khoản của bạn vừa đăng nhập ở một nơi khác!', { duration: 5000, icon: '⚠️' });
+            localStorage.clear();
+            navigate('/login');
+        });
 
         return () => {
             socket.off('receive_message'); socket.off('message_unsent'); socket.off('message_reacted'); socket.off('messages_read');
@@ -364,7 +371,68 @@ export default function Home() {
     const sendCallLog = async (receiverId, type, duration, isMissed) => { const messageData = { senderId: user.id, receiverId, text: '', type: 'call_log', callDuration: duration, isMissedCall: isMissed, fileName: type }; try { const res = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); const msgToSend = { ...res.data, senderName: user.fullName }; setMessages((prev) => [...prev, msgToSend]); socket.emit('send_message', msgToSend); setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); } catch (err) {} };
     const toggleAudio = () => { if (localStream) { const track = localStream.getAudioTracks()[0]; if (track) { track.enabled = !track.enabled; setIsMuted(!track.enabled); } } };
     const toggleVideo = () => { if (localStream) { const track = localStream.getVideoTracks()[0]; if (track) { track.enabled = !track.enabled; setIsVideoOff(!track.enabled); } } };
+    // --- TÍNH NĂNG ĐỔI CAMERA (TRƯỚC/SAU) ---
+    const switchCamera = async () => {
+        if (!localStream) return;
+        try {
+            const newMode = !isFrontCamera;
+            // 1. Yêu cầu xin cấp quyền Camera mới (trước hoặc sau)
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: newMode ? "user" : "environment" }, 
+                audio: true 
+            });
+            
+            const newVideoTrack = stream.getVideoTracks()[0];
+            
+            // 2. Tìm ống dẫn Video đang truyền đi và Tráo lõi mới vào
+            const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
+            if (sender) sender.replaceTrack(newVideoTrack);
+            
+            // 3. Tắt Camera cũ đi cho đỡ tốn pin
+            localStream.getVideoTracks()[0].stop();
+            
+            // 4. Cập nhật lại khung hình của chính mình trên web
+            const newLocalStream = new MediaStream([newVideoTrack, localStream.getAudioTracks()[0]]);
+            setLocalStream(newLocalStream);
+            setIsFrontCamera(newMode);
+            setIsScreenSharing(false); 
+        } catch (error) { toast.error("Không thể chuyển Camera!"); }
+    };
 
+    // --- TÍNH NĂNG CHIA SẺ MÀN HÌNH ---
+    const toggleScreenShare = async () => {
+        if (!localStream) return;
+        try {
+            if (isScreenSharing) {
+                // Đang chia sẻ -> Tắt đi, quay về Camera
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: isFrontCamera ? "user" : "environment" }, audio: true });
+                const videoTrack = stream.getVideoTracks()[0];
+                const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
+                if (sender) sender.replaceTrack(videoTrack);
+                
+                localStream.getVideoTracks()[0].stop();
+                setLocalStream(new MediaStream([videoTrack, localStream.getAudioTracks()[0]]));
+                setIsScreenSharing(false);
+            } else {
+                // Đang Camera -> Xin quyền Quay màn hình
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                const screenTrack = screenStream.getVideoTracks()[0];
+                
+                const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
+                if (sender) sender.replaceTrack(screenTrack);
+                
+                localStream.getVideoTracks()[0].stop();
+                setLocalStream(new MediaStream([screenTrack, localStream.getAudioTracks()[0]]));
+                setIsScreenSharing(true);
+
+                // Nếu người dùng bấm nút "Dừng chia sẻ" mặc định của trình duyệt
+                screenTrack.onended = () => { toggleScreenShare(); };
+            }
+        } catch (error) { 
+            // Báo lỗi nếu người dùng bấm "Hủy" xin quyền
+            if (error.name !== 'NotAllowedError') toast.error("Lỗi chia sẻ màn hình!"); 
+        }
+    };
     // TẠO VÀ THOÁT NHÓM CHAT
     const handleCreateGroup = async (e) => {
         e.preventDefault();
@@ -522,8 +590,16 @@ export default function Home() {
                             </div>
 
                             <div className="absolute bottom-10 md:bottom-12 flex gap-4 md:gap-6 items-center bg-slate-900/60 md:bg-slate-800/80 px-6 py-3 md:px-8 md:py-4 rounded-full backdrop-blur-xl z-20 shadow-2xl border border-white/10">
-                                <button onClick={toggleAudio} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg ${isMuted ? 'bg-white text-slate-900' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`}>{isMuted ? '🔇' : '🎤'}</button>
-                                {callData?.type === 'video' && <button onClick={toggleVideo} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg ${isVideoOff ? 'bg-white text-slate-900' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`}>{isVideoOff ? '🚫' : '📹'}</button>}
+                                <button onClick={toggleAudio} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg ${isMuted ? 'bg-white text-slate-900' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`} title="Bật/Tắt Micro">{isMuted ? '🔇' : '🎤'}</button>
+                                
+                                {callData?.type === 'video' && (
+                                    <>
+                                        <button onClick={toggleVideo} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg ${isVideoOff ? 'bg-white text-slate-900' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`} title="Bật/Tắt Camera">{isVideoOff ? '🚫' : '📹'}</button>
+                                        <button onClick={switchCamera} className="w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg bg-slate-700/80 text-white hover:bg-slate-600" title="Lật Camera">🔄</button>
+                                        <button onClick={toggleScreenShare} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg ${isScreenSharing ? 'bg-blue-500 text-white' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`} title="Chia sẻ màn hình">🖥️</button>
+                                    </>
+                                )}
+                                
                                 <button onClick={endCall} className="bg-red-500 hover:bg-red-600 text-white w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center text-2xl md:text-3xl shadow-[0_0_30px_rgba(239,68,68,0.6)] hover:scale-110 transition-all ml-2 md:ml-4">📞</button>
                             </div>
                         </div>

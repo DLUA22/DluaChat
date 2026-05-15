@@ -44,6 +44,7 @@ app.use('/api/groups', groupRoutes);
 
 // Biến lưu trữ tạm thời các cuộc gọi đang đổ chuông
 let activeCalls = {};
+let userSockets = {};
 
 io.on('connection', (socket) => {
     console.log('⚡ Một người dùng đã kết nối:', socket.id);
@@ -69,6 +70,11 @@ io.on('connection', (socket) => {
                 console.log(`📞 Đang nhắc lại cuộc gọi cho User ${userId}`);
                 socket.emit('call_incoming', ongoingCall);
             }
+            if (userSockets[userId] && userSockets[userId] !== socket.id) {
+                console.log(`⚠️ Ép đăng xuất thiết bị cũ của User: ${userId}`);
+                io.to(userSockets[userId]).emit('force_logout');
+            }
+            userSockets[userId] = socket.id;
 
         } catch (error) {
             console.log("Lỗi join_server:", error.message);
@@ -87,6 +93,9 @@ io.on('connection', (socket) => {
                 if (activeCalls[socket.userId]) {
                     socket.to(activeCalls[socket.userId].userToCall).emit('call_ended');
                     delete activeCalls[socket.userId];
+                }
+                if (userSockets[socket.userId] === socket.id) {
+                    delete userSockets[socket.userId];
                 }
             }
         } catch (error) {

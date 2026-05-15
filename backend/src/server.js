@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const webpush = require('web-push');
 require('dotenv').config();
 
 const connectDB = require('./config/db');
@@ -12,52 +13,71 @@ const User = require('./models/User');
 const authRoutes = require('./routes/authRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const groupRoutes = require('./routes/groupRoutes');
-const webpush = require('web-push');
 
 const app = express();
 
-// 1. KHỞI TẠO SERVER VÀ CORS
-const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: ["http://localhost:5173", "https://dlua-chat.vercel.app"], 
-        methods: ["GET", "POST", "PUT", "DELETE"]
-    }
-});
-
-// 2. KẾT NỐI DATABASE VÀ MIDDLEWARE
+// 1. KẾT NỐI DATABASE VÀ MIDDLEWARE CƠ BẢN
 connectDB();
 app.use(express.json());
-app.use(cors({
-    origin: ["http://localhost:5173", "https://dlua-chat.vercel.app"]
-}));
 app.use(morgan('dev'));
+// Cấu hình Helmet nhưng cho phép tải tài liệu tĩnh từ uploads
+app.use(helmet({ crossOriginResourcePolicy: false }));
+
+// 2. CẤU HÌNH CORS (Cho phép cả link chính và các link nháp của Vercel)
+const allowedOrigins = [
+    "http://localhost:5173", 
+    "https://dlua-chat.vercel.app",
+    /^https:\/\/dlua-chat.*\.vercel\.app$/ // Regex chấp nhận mọi sub-domain của vercel
+];
+
+const corsOptions = {
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true
+};
+
+app.use(cors(corsOptions));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// 3. KHAI BÁO ROUTES API
-app.use('/api/auth', authRoutes);
-app.use('/api/messages', messageRoutes);
-app.use('/api/groups', groupRoutes);
-
+// 3. CẤU HÌNH WEB PUSH (THÔNG BÁO NỔI)
 webpush.setVapidDetails(
-    'mailto:test@dluachat.com', // Thay bằng email của bạn
+    'mailto:test@dluachat.com',
     process.env.VAPID_PUBLIC_KEY,
     process.env.VAPID_PRIVATE_KEY
 );
 
-// ==========================================
-// 4. LOGIC SOCKET.IO (XỬ LÝ THỜI GIAN THỰC)
-// ==========================================
+let userSubscriptions = {}; // Lưu trữ subscription của người dùng theo ID
 
-// Biến lưu trữ tạm thời các cuộc gọi đang đổ chuông
+// 4. KHAI BÁO CÁC ROUTES API
+app.use('/api/auth', authRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/groups', groupRoutes);
+
+// API lưu địa chỉ nhận thông báo từ Frontend
+app.post('/api/notifications/subscribe', (req, res) => {
+    const { userId, subscription } = req.body;
+    if (!userId || !subscription) {
+        return res.status(400).json({ error: "Thiếu dữ liệu đăng ký" });
+    }
+    userSubscriptions[userId] = subscription;
+    console.log(`✅ Đã lưu quyền nhận Push cho User: ${userId}`);
+    res.status(201).json({ message: "Đã đăng ký thành công" });
+});
+
+// 5. KHỞI TẠO HTTP SERVER VÀ SOCKET.IO
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: corsOptions
+});
+
+// Biến lưu trữ trạng thái cuộc gọi và socket
 let activeCalls = {};
 let userSockets = {};
-let userSubscriptions = {};
 
 io.on('connection', (socket) => {
     console.log('⚡ Một người dùng đã kết nối:', socket.id);
 
-    // --- A. QUẢN LÝ TRẠNG THÁI ONLINE/OFFLINE ---
+    // --- A. QUẢN LÝ TRẠNG THÁI ONLINE ---
     socket.on('join_server', async (userId) => {
         try {
             if (!userId) return;
@@ -68,36 +88,34 @@ io.on('connection', (socket) => {
             socket.broadcast.emit('user_status_changed', { 
                 userId: userId, 
                 isOnline: true, 
-                lastSeen: updatedUser.lastSeen 
+                lastSeen: updatedUser?.lastSeen 
             });
-            console.log(`🟢 User ${userId} is Online`);
 
-            // [FIX LỖI]: KIỂM TRA XEM CÓ AI ĐANG GỌI CHO NGƯỜI NÀY KHÔNG ĐỂ BÁO LẠI
+            // Kiểm tra cuộc gọi lỡ/đang chờ khi vừa vào app
             const ongoingCall = Object.values(activeCalls).find(call => call.userToCall === userId);
             if (ongoingCall) {
-                console.log(`📞 Đang nhắc lại cuộc gọi cho User ${userId}`);
                 socket.emit('call_incoming', ongoingCall);
             }
+
+            // Xử lý đăng nhập nhiều nơi (Force Logout)
             if (userSockets[userId] && userSockets[userId] !== socket.id) {
-                console.log(`⚠️ Ép đăng xuất thiết bị cũ của User: ${userId}`);
                 io.to(userSockets[userId]).emit('force_logout');
             }
             userSockets[userId] = socket.id;
 
         } catch (error) {
-            console.log("Lỗi join_server:", error.message);
+            console.error("Lỗi join_server:", error.message);
         }
     });
 
     socket.on('disconnect', async () => {
-        console.log('❌ Người dùng đã ngắt kết nối:', socket.id);
         try {
             if (socket.userId) {
                 const now = new Date();
                 await User.findByIdAndUpdate(socket.userId, { isOnline: false, lastSeen: now });
                 socket.broadcast.emit('user_status_changed', { userId: socket.userId, isOnline: false, lastSeen: now });
                 
-                // [FIX LỖI]: Xóa cuộc gọi nếu người gọi bị rớt mạng đột ngột
+                // Dọn dẹp cuộc gọi nếu rớt mạng
                 if (activeCalls[socket.userId]) {
                     socket.to(activeCalls[socket.userId].userToCall).emit('call_ended');
                     delete activeCalls[socket.userId];
@@ -107,11 +125,11 @@ io.on('connection', (socket) => {
                 }
             }
         } catch (error) {
-            console.log("Lỗi khi disconnect:", error.message);
+            console.error("Lỗi khi disconnect:", error.message);
         }
     });
 
-    // --- B. QUẢN LÝ TIN NHẮN CHAT ---
+    // --- B. TIN NHẮN ---
     socket.on('send_message', (data) => {
         if (data.groupId) {
             socket.to(data.groupId).emit('receive_message', data);
@@ -129,49 +147,40 @@ io.on('connection', (socket) => {
     socket.on('unsend_message', (data) => socket.to(data.receiverId).emit('message_unsent', data.messageId));
     socket.on('react_message', (data) => socket.to(data.receiverId).emit('message_reacted', data));
 
-    // --- C. QUẢN LÝ NHÓM (GROUPS) ---
+    // --- C. NHÓM & BẠN BÈ ---
     socket.on('join_groups', (groupIds) => {
         if (Array.isArray(groupIds)) {
             groupIds.forEach(id => socket.join(id));
-            console.log(`👥 User ${socket.userId} joined rooms:`, groupIds);
         }
     });
 
     socket.on('new_group_created', (data) => {
-        try {
-            if (data.members && Array.isArray(data.members)) {
-                data.members.forEach(memberId => socket.to(memberId).emit('group_added'));
-            }
-        } catch (error) {
-            console.log("Lỗi socket tạo nhóm:", error.message);
-        }
+        if (data.members) data.members.forEach(memberId => socket.to(memberId).emit('group_added'));
     });
 
     socket.on('leave_group', (data) => socket.to(data.receiverId).emit('group_updated', data));
-
-    // --- D. QUẢN LÝ BẠN BÈ ---
     socket.on('send_friend_request', (data) => socket.to(data.receiverId).emit('new_friend_request'));
     socket.on('accept_friend_request', (data) => socket.to(data.receiverId).emit('friend_request_accepted'));
 
-    // --- E. QUẢN LÝ GỌI ĐIỆN (WEBRTC) ---
+    // --- D. GỌI ĐIỆN & WEB PUSH ---
     socket.on('call_user', (data) => {
         activeCalls[data.from] = data; 
         socket.to(data.userToCall).emit('call_incoming', data);
+
+        // Bắn thông báo nổi nếu người nhận có đăng ký
         const sub = userSubscriptions[data.userToCall];
         if (sub) {
             const payload = JSON.stringify({
                 title: 'Cuộc gọi đến',
-                body: `${data.name} đang gọi video cho bạn!`,
+                body: `${data.name} đang gọi cho bạn...`,
                 url: '/' 
             });
-            webpush.sendNotification(sub, payload).catch(err => console.error("Lỗi gửi Push:", err));
+            webpush.sendNotification(sub, payload).catch(err => console.error("Push Error:", err));
         }
     });
 
     socket.on('answer_call', (data) => {
-        if(activeCalls[data.to]) {
-            delete activeCalls[data.to];
-        }
+        if(activeCalls[data.to]) delete activeCalls[data.to];
         socket.to(data.to).emit('call_accepted', data.answer);
     });
 
@@ -186,16 +195,9 @@ io.on('connection', (socket) => {
         socket.to(data.to).emit('call_ended');
     });
 });
-app.post('/api/notifications/subscribe', (req, res) => {
-    const { userId, subscription } = req.body;
-    userSubscriptions[userId] = subscription;
-    res.status(201).json({});
-});
 
-// ==========================================
-// 5. KHỞI ĐỘNG SERVER
-// ==========================================
+// 6. KHỞI ĐỘNG SERVER
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-    console.log(`🚀 Server is running on port ${PORT}`);
+    console.log(`🚀 Server DluaChat đang chạy tại cổng: ${PORT}`);
 });

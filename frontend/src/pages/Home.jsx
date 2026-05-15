@@ -569,7 +569,46 @@ export default function Home() {
             </div>
         ), { duration: Infinity, position: 'top-center' });
     };
+    const urlBase64ToUint8Array = (base64String) => {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) { outputArray[i] = rawData.charCodeAt(i); }
+        return outputArray;
+    };
 
+    // YÊU CẦU QUYỀN VÀ ĐĂNG KÝ NHẬN PUSH
+    useEffect(() => {
+        const setupPushNotifications = async () => {
+            // Kiểm tra xem trình duyệt có hỗ trợ Push và user đã đăng nhập chưa
+            if ('serviceWorker' in navigator && 'PushManager' in window && user) {
+                try {
+                    const permission = await Notification.requestPermission();
+                    if (permission === 'granted') {
+                        const registration = await navigator.serviceWorker.ready;
+                        
+                        // Lấy Public Key từ file .env của Frontend
+                        const publicVapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY; 
+                        
+                        const subscription = await registration.pushManager.subscribe({
+                            userVisibleOnly: true,
+                            applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
+                        });
+
+                        // Gửi thông tin (subscription) về cho Backend lưu lại
+                        await axios.post('https://dlua-chat-api.onrender.com/api/notifications/subscribe', {
+                            userId: user.id,
+                            subscription: subscription
+                        });
+                    }
+                } catch (error) {
+                    console.error("Lỗi đăng ký Push:", error);
+                }
+            }
+        };
+        setupPushNotifications();
+    }, [user]);
     // CHAT & UPLOAD
     const handleSendMessage = async (e) => { 
         e.preventDefault(); 

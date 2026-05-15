@@ -838,26 +838,17 @@ export default function Home() {
                     )}
                     {activeTab === 'profile' && (
                         <div className="flex flex-col h-full">
+                            {/* Header: Nút chuyển nền và Đăng xuất (Giữ nguyên) */}
                             <div className="flex justify-between items-center mb-6">
                                 <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Hồ sơ</h2>
                                 <div className="md:hidden flex gap-2">
                                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-600 dark:text-yellow-400 flex items-center justify-center"><i className={isDarkMode ? 'ri-sun-fill' : 'ri-moon-fill'}></i></button>
-                                    {isInstallable && (
-                                        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 p-4 rounded-[24px] mb-6 flex items-center justify-between shadow-lg shadow-emerald-500/20">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white text-xl backdrop-blur-sm"><i className="ri-smartphone-line"></i></div>
-                                                <div>
-                                                    <p className="font-bold text-white text-sm">Cài đặt DluaChat</p>
-                                                    <p className="text-emerald-100 text-[10px]">Thêm vào màn hình chính</p>
-                                                </div>
-                                            </div>
-                                            <button onClick={handleInstallClick} className="bg-white text-emerald-600 px-4 py-2 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all">Tải ngay</button>
-                                        </div>
-                                    )}
                                     <button onClick={handleLogout} className="w-10 h-10 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-full flex items-center justify-center"><i className="ri-logout-box-r-line"></i></button>
                                 </div>
                             </div>
-                            <div className="flex flex-col items-center mb-8">
+
+                            {/* Thông tin User (Avatar, Tên, ID) */}
+                            <div className="flex flex-col items-center mb-6">
                                 <input type="file" accept="image/*" ref={uploadAvatarInputRef} className="hidden" onChange={(e) => setAvatarFile(e.target.files[0])} />
                                 {avatarFile ? (
                                     <div className="flex flex-col items-center bg-slate-50 dark:bg-slate-800 p-4 rounded-3xl border border-slate-100 dark:border-slate-700 w-full">
@@ -882,6 +873,22 @@ export default function Home() {
                                 <p className="text-blue-500 dark:text-blue-400 font-medium text-sm bg-blue-50 dark:bg-blue-500/10 px-3 py-1 rounded-lg mt-1">{user.uniqueName}</p>
                                 <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">@{user.username}</p>
                             </div>
+
+                            {/* CHÈN NÚT TẢI APP Ở ĐÂY LÀ ĐẸP NHẤT */}
+                            {isInstallable && (
+                                <div className="bg-gradient-to-r from-emerald-500 to-teal-600 p-4 rounded-[24px] mb-6 flex items-center justify-between shadow-lg shadow-emerald-500/20 md:hidden">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white text-xl backdrop-blur-sm"><i className="ri-smartphone-line"></i></div>
+                                        <div>
+                                            <p className="font-bold text-white text-sm">Cài đặt DluaChat</p>
+                                            <p className="text-emerald-100 text-[10px]">Thêm vào màn hình chính</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={handleInstallClick} className="bg-white text-emerald-600 px-4 py-2 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all">Tải ngay</button>
+                                </div>
+                            )}
+
+                            {/* Khối Đổi mật khẩu (Giữ nguyên) */}
                             <div className="bg-[#f8fafc] dark:bg-slate-900 p-5 rounded-[24px] border border-slate-100 dark:border-slate-800">
                                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">Đổi mật khẩu</p>
                                 <form onSubmit={handleChangePassword} className="space-y-3">

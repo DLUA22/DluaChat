@@ -465,7 +465,6 @@ export default function Home() {
         }
     };
 
-    // --- TÍNH NĂNG CHIA SẺ MÀN HÌNH ĐÃ FIX LỖI NÚT DỪNG ---
     const toggleScreenShare = async () => {
         if (!localStream) return;
 
@@ -484,9 +483,10 @@ export default function Home() {
                 const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
                 if (sender) sender.replaceTrack(videoTrack);
                 
-                setLocalStream(new MediaStream([videoTrack, localStream.getAudioTracks()[0]]));
-                setLocalStream(newLocalStream);
-                streamRef.current = newLocalStream;
+                // [ĐÃ FIX]: Gom chung luồng video mới vào một biến
+                const updatedStream = new MediaStream([videoTrack, localStream.getAudioTracks()[0]]);
+                setLocalStream(updatedStream);
+                streamRef.current = updatedStream;
                 setIsScreenSharing(false);
             } else {
                 // ĐANG CAMERA -> BẬT CHIA SẺ
@@ -497,9 +497,11 @@ export default function Home() {
                 if (sender) sender.replaceTrack(screenTrack);
                 
                 localStream.getVideoTracks().forEach(track => track.stop());
-                setLocalStream(new MediaStream([screenTrack, localStream.getAudioTracks()[0]]));
-                setLocalStream(newLocalStream);
-                streamRef.current = newLocalStream;
+                
+                // [ĐÃ FIX]: Gom chung luồng video mới vào một biến
+                const updatedStream = new MediaStream([screenTrack, localStream.getAudioTracks()[0]]);
+                setLocalStream(updatedStream);
+                streamRef.current = updatedStream;
                 setIsScreenSharing(true);
 
                 // [FIX LỖI]: BẮT SỰ KIỆN KHI BẤM NÚT "DỪNG CHIA SẺ" CỦA TRÌNH DUYỆT
@@ -513,9 +515,10 @@ export default function Home() {
                         const currentSender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
                         if (currentSender) currentSender.replaceTrack(camTrack);
                         
-                        setLocalStream(new MediaStream([camTrack, localStream.getAudioTracks()[0]]));
-                        setLocalStream(newLocalStream);
-                        streamRef.current = newLocalStream;
+                        // [ĐÃ FIX]: Gom chung luồng video mới vào một biến
+                        const revertedStream = new MediaStream([camTrack, localStream.getAudioTracks()[0]]);
+                        setLocalStream(revertedStream);
+                        streamRef.current = revertedStream;
                     } catch (e) {
                         toast.error("Vui lòng bật lại Camera!");
                     }

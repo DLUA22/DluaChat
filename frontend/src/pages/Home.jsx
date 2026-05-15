@@ -113,8 +113,7 @@ export default function Home() {
     const imageInputRef = useRef(null), fileInputRef = useRef(null), videoInputRef = useRef(null);
     
     // THÊM TÚI HÀNG ĐỢI pendingCandidates VÀO ĐÂY
-    const myVideoRef = useRef(), remoteVideoRef = useRef(), peerRef = useRef(), ringtoneRef = useRef(null), pendingCandidates = useRef([]);
-
+    const myVideoRef = useRef(), remoteVideoRef = useRef(), peerRef = useRef(), ringtoneRef = useRef(null), pendingCandidates = useRef([]), streamRef = useRef(null);
     useEffect(() => {
         const handleBeforeUnload = () => socket.disconnect();
         window.addEventListener('beforeunload', handleBeforeUnload);
@@ -130,12 +129,23 @@ export default function Home() {
             socket.emit('join_server', parsedUser.id);
             fetchInitialData(parsedUser.id);
         }
-        ringtoneRef.current = new Audio('/ringtone.mp3'); ringtoneRef.current.loop = true;
     }, [navigate]);
 
     useEffect(() => {
-        if (callStatus === 'ringing' || callStatus === 'calling') ringtoneRef.current?.play().catch(() => {});
-        else { ringtoneRef.current?.pause(); if (ringtoneRef.current) ringtoneRef.current.currentTime = 0; }
+        if (callStatus === 'ringing' || callStatus === 'calling') {
+            if (!ringtoneRef.current) {
+                ringtoneRef.current = new Audio('/ringtone.mp3');
+                ringtoneRef.current.loop = true;
+            }
+            ringtoneRef.current.play().catch(() => {});
+        } else {
+            if (ringtoneRef.current) {
+                ringtoneRef.current.pause();
+                ringtoneRef.current.removeAttribute('src');
+                ringtoneRef.current.load();
+                ringtoneRef.current = null;
+            }
+        }
         if (callStatus === 'active' && !callStartTime) setCallStartTime(Date.now());
     }, [callStatus]);
 
@@ -302,7 +312,17 @@ export default function Home() {
     const handleScroll = (e) => { if (e.target.scrollTop === 0 && hasMore && !isLoadingMore) setPage(prev => prev + 1); };
 
     // CALL & WEBRTC
-    const getMedia = async (type) => { try { const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true }); setLocalStream(stream); return stream; } catch (err) { toast.error("Cấp quyền Camera/Micro!"); return null; } };
+    const getMedia = async (type) => { 
+        try { 
+            const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true }); 
+            setLocalStream(stream); 
+            streamRef.current = stream;
+            return stream; 
+        } catch (err) { 
+            toast.error("Cấp quyền Camera/Micro!"); 
+            return null; 
+        } 
+    };
     const createPeer = (targetId, stream) => { 
         const peer = new RTCPeerConnection({ 
             iceServers: [
@@ -358,14 +378,21 @@ export default function Home() {
 
     const endCall = () => { const targetId = callStatus === 'ringing' ? callData.from : (currentChat?._id || callData?.toId); socket.emit('end_call', { to: targetId }); let isMissed = false, duration = 0; if (callStatus === 'calling' || callStatus === 'ringing') isMissed = true; else if (callStatus === 'active') duration = Math.floor((Date.now() - callStartTime) / 1000); if (callStatus !== 'ringing') sendCallLog(targetId, callData.type, duration, isMissed); endCallLocally(); };
     
-    // FIX: XÓA SẠCH TÚI CHỜ KHI TẮT MÁY
     const endCallLocally = () => { 
         if (peerRef.current) peerRef.current.close(); 
         peerRef.current = null; 
-        pendingCandidates.current = []; // Dọn túi
-        if (localStream) localStream.getTracks().forEach(t => t.stop()); 
-        setLocalStream(null); setRemoteStream(null); 
-        setCallStatus('idle'); setCallData(null); setIsMuted(false); setIsVideoOff(false); setCallStartTime(null); 
+        pendingCandidates.current = []; 
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+        } 
+        setLocalStream(null); 
+        setRemoteStream(null); 
+        setCallStatus('idle'); 
+        setCallData(null); 
+        setIsMuted(false); 
+        setIsVideoOff(false); 
+        setCallStartTime(null); 
     };
 
     const sendCallLog = async (receiverId, type, duration, isMissed) => { const messageData = { senderId: user.id, receiverId, text: '', type: 'call_log', callDuration: duration, isMissedCall: isMissed, fileName: type }; try { const res = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); const msgToSend = { ...res.data, senderName: user.fullName }; setMessages((prev) => [...prev, msgToSend]); socket.emit('send_message', msgToSend); setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); } catch (err) {} };
@@ -427,6 +454,8 @@ export default function Home() {
                 if (sender) sender.replaceTrack(videoTrack);
                 
                 setLocalStream(new MediaStream([videoTrack, localStream.getAudioTracks()[0]]));
+                setLocalStream(newLocalStream);
+                streamRef.current = newLocalStream;
                 setIsScreenSharing(false);
             } else {
                 // ĐANG CAMERA -> BẬT CHIA SẺ
@@ -438,6 +467,8 @@ export default function Home() {
                 
                 localStream.getVideoTracks().forEach(track => track.stop());
                 setLocalStream(new MediaStream([screenTrack, localStream.getAudioTracks()[0]]));
+                setLocalStream(newLocalStream);
+                streamRef.current = newLocalStream;
                 setIsScreenSharing(true);
 
                 // [FIX LỖI]: BẮT SỰ KIỆN KHI BẤM NÚT "DỪNG CHIA SẺ" CỦA TRÌNH DUYỆT
@@ -452,6 +483,8 @@ export default function Home() {
                         if (currentSender) currentSender.replaceTrack(camTrack);
                         
                         setLocalStream(new MediaStream([camTrack, localStream.getAudioTracks()[0]]));
+                        setLocalStream(newLocalStream);
+                        streamRef.current = newLocalStream;
                     } catch (e) {
                         toast.error("Vui lòng bật lại Camera!");
                     }

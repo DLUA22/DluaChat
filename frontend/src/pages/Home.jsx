@@ -105,6 +105,8 @@ export default function Home() {
     const [avatarFile, setAvatarFile] = useState(null);
     const [avatarScale, setAvatarScale] = useState(1.2);
     const [passwords, setPasswords] = useState({ oldPass: '', newPass: '' });
+    const [deferredPrompt, setDeferredPrompt] = useState(null);
+    const [isInstallable, setIsInstallable] = useState(false);  
     
     const editorRef = useRef(null);
     const uploadAvatarInputRef = useRef(null);
@@ -153,6 +155,35 @@ export default function Home() {
         if (isDarkMode) document.documentElement.classList.add('dark');
         else document.documentElement.classList.remove('dark');
     }, [isDarkMode]);
+    useEffect(() => {
+        const handleBeforeInstallPrompt = (e) => {
+            e.preventDefault(); // Ngăn trình duyệt tự hiện thông báo xấu xí
+            setDeferredPrompt(e); // Lưu lại sự kiện để dùng cho nút bấm của mình
+            setIsInstallable(true); // Bật cờ cho hiện nút "Tải App"
+        };
+
+        // Lắng nghe khi web đã sẵn sàng để cài
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+        // Lắng nghe khi người dùng đã cài đặt thành công (để ẩn nút đi)
+        window.addEventListener('appinstalled', () => {
+            setIsInstallable(false);
+            setDeferredPrompt(null);
+        });
+
+        return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    }, []);
+
+    // Hàm kích hoạt khi bấm nút
+    const handleInstallClick = async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt(); // Hiện bảng hỏi cài đặt chuẩn của HĐH
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            setIsInstallable(false);
+        }
+        setDeferredPrompt(null);
+    };
 
     useEffect(() => {
         const handleReceiveMessage = (data) => {
@@ -709,6 +740,11 @@ export default function Home() {
                         <i className={`text-2xl ${isDarkMode ? 'ri-sun-fill text-yellow-400' : 'ri-moon-fill'}`}></i>
                     </button>
                 </div>
+                {isInstallable && (
+                    <button onClick={handleInstallClick} className="w-12 h-12 rounded-2xl flex items-center justify-center text-emerald-400 hover:text-white bg-emerald-400/10 hover:bg-emerald-500 transition-all mb-2 shadow-[0_0_15px_rgba(52,211,153,0.2)]" title="Cài đặt App">
+                        <i className="ri-download-cloud-2-fill text-2xl"></i>
+                    </button>
+                )}
                 <button onClick={handleLogout} className="text-red-400 hover:text-red-300 p-3 bg-red-400/10 rounded-2xl transition-all hover:bg-red-400/20"><i className="ri-logout-box-r-line text-2xl"></i></button>
             </div>
 
@@ -806,6 +842,18 @@ export default function Home() {
                                 <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Hồ sơ</h2>
                                 <div className="md:hidden flex gap-2">
                                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-600 dark:text-yellow-400 flex items-center justify-center"><i className={isDarkMode ? 'ri-sun-fill' : 'ri-moon-fill'}></i></button>
+                                    {isInstallable && (
+                                        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 p-4 rounded-[24px] mb-6 flex items-center justify-between shadow-lg shadow-emerald-500/20">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white text-xl backdrop-blur-sm"><i className="ri-smartphone-line"></i></div>
+                                                <div>
+                                                    <p className="font-bold text-white text-sm">Cài đặt DluaChat</p>
+                                                    <p className="text-emerald-100 text-[10px]">Thêm vào màn hình chính</p>
+                                                </div>
+                                            </div>
+                                            <button onClick={handleInstallClick} className="bg-white text-emerald-600 px-4 py-2 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all">Tải ngay</button>
+                                        </div>
+                                    )}
                                     <button onClick={handleLogout} className="w-10 h-10 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-full flex items-center justify-center"><i className="ri-logout-box-r-line"></i></button>
                                 </div>
                             </div>

@@ -581,18 +581,15 @@ export default function Home() {
         return outputArray;
     };
 
-    // YÊU CẦU QUYỀN VÀ ĐĂNG KÝ NHẬN PUSH
     useEffect(() => {
         const setupPushNotifications = async () => {
-            // Kiểm tra xem trình duyệt có hỗ trợ Push và user đã đăng nhập chưa
             if ('serviceWorker' in navigator && 'PushManager' in window && user) {
                 try {
                     const permission = await Notification.requestPermission();
                     if (permission === 'granted') {
                         const registration = await navigator.serviceWorker.ready;
                         
-                        // Lấy Public Key từ file .env của Frontend
-                        const publicVapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY; 
+                        const publicVapidKey = import.meta.env.VAPID_PUBLIC_KEY; 
                         
                         const subscription = await registration.pushManager.subscribe({
                             userVisibleOnly: true,

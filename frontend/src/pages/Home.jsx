@@ -22,7 +22,6 @@ const encryptText = (text) => {
 const decryptText = (ciphertext) => {
     if (!ciphertext) return "";
     try {
-        // Chuỗi AES của CryptoJS luôn bắt đầu bằng U2FsdGVk, nếu không phải thì trả về gốc
         if (!ciphertext.startsWith("U2FsdGVk")) return ciphertext;
         const bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_KEY);
         const decoded = bytes.toString(CryptoJS.enc.Utf8);
@@ -104,9 +103,10 @@ export default function Home() {
     const scrollRef = useRef();
     const navigate = useNavigate();
     const imageInputRef = useRef(null), fileInputRef = useRef(null), videoInputRef = useRef(null);
-    const myVideoRef = useRef(), remoteVideoRef = useRef(), peerRef = useRef(), ringtoneRef = useRef(null);
+    
+    // THÊM TÚI HÀNG ĐỢI pendingCandidates VÀO ĐÂY
+    const myVideoRef = useRef(), remoteVideoRef = useRef(), peerRef = useRef(), ringtoneRef = useRef(null), pendingCandidates = useRef([]);
 
-    // XÓA SẠCH SOCKET CŨ TRƯỚC KHI TẢI LẠI TRANG ĐỂ TRÁNH LỖI TRẠNG THÁI
     useEffect(() => {
         const handleBeforeUnload = () => socket.disconnect();
         window.addEventListener('beforeunload', handleBeforeUnload);
@@ -138,39 +138,27 @@ export default function Home() {
 
     useEffect(() => {
         const handleReceiveMessage = (data) => {
-            // 1. Giải mã an toàn
-            if (data.text && data.type === 'text') {
-                data.text = decryptText(data.text);
-            }
-
-            // 2. Phân loại tin Nhóm hay Cá nhân
+            if (data.text && data.type === 'text') data.text = decryptText(data.text);
             const isGroupMsg = data.groupId !== null && data.groupId !== undefined;
             const incomingChatId = isGroupMsg ? String(data.groupId) : String(getSenderId(data.senderId));
             const currentOpenId = currentChat ? String(currentChat._id) : null;
 
-            // 3. Đang mở đúng khung chat -> Cập nhật màn hình
             if (currentOpenId === incomingChatId) {
                 setMessages((prev) => {
                     if (prev.find(m => String(m._id) === String(data._id))) return prev;
                     return [...prev, data];
                 });
-                
                 if (!isGroupMsg) {
                     socket.emit('mark_read', { senderId: incomingChatId, receiverId: user.id, readAt: new Date() });
                     axios.post('https://dlua-chat-api.onrender.com/api/messages/mark-read', { senderId: incomingChatId, receiverId: user.id });
                 }
                 setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-            } 
-            // 4. Mở chỗ khác -> Rung thông báo Toast
-            else {
+            } else {
                 setUnreadCounts((prev) => ({ ...prev, [incomingChatId]: (prev[incomingChatId] || 0) + 1 }));
-                
                 const senderName = isGroupMsg ? `Nhóm (${data.senderName})` : (data.senderName || 'Bạn bè');
                 const content = data.text ? data.text : (data.imageUrl ? '[Hình ảnh]' : '[Tập tin]');
-
                 toast(`${senderName}: ${content}`, {
-                    icon: '💬',
-                    position: 'top-right',
+                    icon: '💬', position: 'top-right',
                     style: { borderRadius: '12px', background: isDarkMode ? '#1e293b' : '#fff', color: isDarkMode ? '#fff' : '#000', border: '1px solid #3b82f6' }
                 });
             }
@@ -206,9 +194,33 @@ export default function Home() {
             });
         });
 
+        // --- FIX LOGIC NHẬN CUỘC GỌI VÀ NHẬN TỌA ĐỘ BỊ NGHẼN ---
         socket.on('call_incoming', (data) => { setCallData(data); setCallStatus('ringing'); });
-        socket.on('call_accepted', async (answer) => { setCallStatus('active'); if (peerRef.current) await peerRef.current.setRemoteDescription(new RTCSessionDescription(answer)); });
-        socket.on('ice_candidate', async (candidate) => { try { if (peerRef.current) await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) { } });
+        
+        socket.on('call_accepted', async (answer) => { 
+            setCallStatus('active'); 
+            if (peerRef.current) {
+                await peerRef.current.setRemoteDescription(new RTCSessionDescription(answer)); 
+                // Lôi tọa độ trong túi ra kết nối
+                for (let c of pendingCandidates.current) {
+                    try { await peerRef.current.addIceCandidate(new RTCIceCandidate(c)); } catch(e){}
+                }
+                pendingCandidates.current = [];
+            }
+        });
+
+        socket.on('ice_candidate', async (candidate) => { 
+            try { 
+                // CHỈ THÊM TỌA ĐỘ NẾU ĐÃ BẮT MÁY (Đã có remoteDescription)
+                if (peerRef.current && peerRef.current.remoteDescription) { 
+                    await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate)); 
+                } else {
+                    // NẾU CHƯA BẮT MÁY, NHÉT TẠM VÀO TÚI HÀNG ĐỢI
+                    pendingCandidates.current.push(candidate);
+                }
+            } catch (e) { console.log(e); } 
+        });
+
         socket.on('call_ended', () => endCallLocally());
 
         return () => {
@@ -244,12 +256,8 @@ export default function Home() {
         try {
             const isGroupFlag = currentChat.isGroup ? 'true' : 'false';
             const res = await axios.get(`https://dlua-chat-api.onrender.com/api/messages/${user.id}/${currentChat._id}?page=${pageNum}&limit=20&isGroup=${isGroupFlag}`);
-            
-            // Giải mã an toàn không sợ lỗi
             const fetchedMessages = res.data.map(msg => {
-                if (msg.text && msg.type === 'text') {
-                    return { ...msg, text: decryptText(msg.text) };
-                }
+                if (msg.text && msg.type === 'text') return { ...msg, text: decryptText(msg.text) };
                 return msg;
             });
 
@@ -282,7 +290,6 @@ export default function Home() {
         const peer = new RTCPeerConnection({ 
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                
                 {
                     urls: "turn:global.relay.metered.ca:80",
                     username: "ae0da5fe20e220a4ba893339",
@@ -309,10 +316,41 @@ export default function Home() {
         }; 
         return peer; 
     };
+    
     const startCall = async (type) => { if (!currentChat || currentChat.isGroup) { toast.error("Chức năng gọi Nhóm chưa được hỗ trợ!"); return; } const stream = await getMedia(type); if (!stream) return; setCallStatus('calling'); setCallData({ name: currentChat.fullName, type, toId: currentChat._id }); const peer = createPeer(currentChat._id, stream); const offer = await peer.createOffer(); await peer.setLocalDescription(offer); socket.emit('call_user', { userToCall: currentChat._id, from: user.id, name: user.fullName, type, offer }); };
-    const answerCall = async () => { const stream = await getMedia(callData.type); if (!stream) return; setCallStatus('active'); const peer = createPeer(callData.from, stream); await peer.setRemoteDescription(new RTCSessionDescription(callData.offer)); const answer = await peer.createAnswer(); await peer.setLocalDescription(answer); socket.emit('answer_call', { to: callData.from, answer }); };
+    
+    // FIX ANSWER CALL: BẮT MÁY XONG PHẢI LẤY TỌA ĐỘ TRONG TÚI RA KẾT NỐI
+    const answerCall = async () => { 
+        const stream = await getMedia(callData.type); 
+        if (!stream) return; 
+        setCallStatus('active'); 
+        
+        const peer = createPeer(callData.from, stream); 
+        await peer.setRemoteDescription(new RTCSessionDescription(callData.offer)); 
+        
+        // Thêm các tọa độ 4G đã chờ sẵn trong túi vào
+        for (let c of pendingCandidates.current) {
+            try { await peer.addIceCandidate(new RTCIceCandidate(c)); } catch(e){}
+        }
+        pendingCandidates.current = [];
+
+        const answer = await peer.createAnswer(); 
+        await peer.setLocalDescription(answer); 
+        socket.emit('answer_call', { to: callData.from, answer }); 
+    };
+
     const endCall = () => { const targetId = callStatus === 'ringing' ? callData.from : (currentChat?._id || callData?.toId); socket.emit('end_call', { to: targetId }); let isMissed = false, duration = 0; if (callStatus === 'calling' || callStatus === 'ringing') isMissed = true; else if (callStatus === 'active') duration = Math.floor((Date.now() - callStartTime) / 1000); if (callStatus !== 'ringing') sendCallLog(targetId, callData.type, duration, isMissed); endCallLocally(); };
-    const endCallLocally = () => { if (peerRef.current) peerRef.current.close(); peerRef.current = null; if (localStream) localStream.getTracks().forEach(t => t.stop()); setLocalStream(null); setRemoteStream(null); setCallStatus('idle'); setCallData(null); setIsMuted(false); setIsVideoOff(false); setCallStartTime(null); };
+    
+    // FIX: XÓA SẠCH TÚI CHỜ KHI TẮT MÁY
+    const endCallLocally = () => { 
+        if (peerRef.current) peerRef.current.close(); 
+        peerRef.current = null; 
+        pendingCandidates.current = []; // Dọn túi
+        if (localStream) localStream.getTracks().forEach(t => t.stop()); 
+        setLocalStream(null); setRemoteStream(null); 
+        setCallStatus('idle'); setCallData(null); setIsMuted(false); setIsVideoOff(false); setCallStartTime(null); 
+    };
+
     const sendCallLog = async (receiverId, type, duration, isMissed) => { const messageData = { senderId: user.id, receiverId, text: '', type: 'call_log', callDuration: duration, isMissedCall: isMissed, fileName: type }; try { const res = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); const msgToSend = { ...res.data, senderName: user.fullName }; setMessages((prev) => [...prev, msgToSend]); socket.emit('send_message', msgToSend); setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); } catch (err) {} };
     const toggleAudio = () => { if (localStream) { const track = localStream.getAudioTracks()[0]; if (track) { track.enabled = !track.enabled; setIsMuted(!track.enabled); } } };
     const toggleVideo = () => { if (localStream) { const track = localStream.getVideoTracks()[0]; if (track) { track.enabled = !track.enabled; setIsVideoOff(!track.enabled); } } };
@@ -383,7 +421,6 @@ export default function Home() {
             const res = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); 
             const socketData = { ...res.data, senderName: user.fullName };
             
-            // TUYỆT CHIÊU FRONTEND ĐỂ FIX ĐỒNG BỘ NHÓM MÀ KHÔNG CẦN SỬA SERVER.JS
             if (isGroup) { 
                 currentChat.members.forEach(m => {
                     if (m._id !== user.id) {
@@ -394,7 +431,6 @@ export default function Home() {
                 socket.emit('send_message', socketData); 
             }
 
-            // HIỂN THỊ CHỮ THẬT CHO MÁY MÌNH
             const msgToDisplay = { ...res.data, senderName: user.fullName, text: newMessage }; 
             setMessages((prev) => [...prev, msgToDisplay]); 
             
@@ -409,7 +445,7 @@ export default function Home() {
     const handleLogout = () => { localStorage.clear(); navigate('/login'); };
 
     const handleGlobalSearch = async (e) => { e.preventDefault(); setSearchResult(null); if (!globalSearchQuery.trim()) return; try { const res = await axios.get(`https://dlua-chat-api.onrender.com/api/auth/search?uniqueName=${globalSearchQuery}`); setSearchResult(res.data); } catch (err) { toast.error('Không tìm thấy người dùng'); } };
-    const handleSendRequest = async (receiverId) => { try { await axios.post('hhttps://dlua-chat-api.onrender.com/api/auth/friend-request/send', { senderId: user.id, receiverId }); toast.success('Đã gửi lời mời!'); setSearchResult(null); setGlobalSearchQuery(''); socket.emit('send_friend_request', { receiverId }); } catch (err) { toast.error('Lỗi gửi lời mời'); } };
+    const handleSendRequest = async (receiverId) => { try { await axios.post('https://dlua-chat-api.onrender.com/api/auth/friend-request/send', { senderId: user.id, receiverId }); toast.success('Đã gửi lời mời!'); setSearchResult(null); setGlobalSearchQuery(''); socket.emit('send_friend_request', { receiverId }); } catch (err) { toast.error('Lỗi gửi lời mời'); } };
     const handleRespondRequest = async (req, status) => { try { await axios.post('https://dlua-chat-api.onrender.com/api/auth/friend-request/respond', { requestId: req._id, status }); if (status === 'accepted') { socket.emit('accept_friend_request', { receiverId: req.sender._id }); } fetchInitialData(user.id); } catch (err) {} };
     const handleUnfriend = (friendId) => { toast((t) => ( <div className="flex flex-col gap-3 min-w-[200px]"><p className="text-[13px] font-bold text-slate-800 text-center">Chắc chắn muốn xóa người này?</p><div className="flex gap-2 mt-1"><button onClick={async () => { toast.dismiss(t.id); try { await axios.post('https://dlua-chat-api.onrender.com/api/auth/unfriend', { userId: user.id, friendId }); toast.success("Đã xóa bạn bè", { duration: 2000 }); if (currentChat && currentChat._id === friendId) setCurrentChat(null); fetchFriends(user.id); } catch (err) { toast.error("Lỗi khi xóa bạn bè"); } }} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-1.5 rounded-lg text-xs font-bold transition-colors">Xóa luôn</button><button onClick={() => toast.dismiss(t.id)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-1.5 rounded-lg text-xs font-bold transition-colors">Hủy bỏ</button></div></div> ), { duration: Infinity, position: 'top-center' }); };
     
@@ -420,16 +456,14 @@ export default function Home() {
     const combinedChatList = [...friends, ...groups].filter(f => f.fullName.toLowerCase().includes(localChatSearch.toLowerCase()));
     const lastMessage = messages[messages.length - 1];
 
-return (
-        // Đổi p-4 thành p-0 trên mobile để tràn viền như App thật, dùng h-[100dvh] để chống lỗi thanh địa chỉ Safari
+    return (
         <motion.div onClick={() => setActiveMenuId(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-[100dvh] bg-[#f0f4f8] dark:bg-slate-900 p-0 md:p-6 md:gap-6 font-['Be_Vietnam_Pro'] relative transition-colors duration-300 overflow-hidden">
             <Toaster position="top-center" />
             
-            {/* LỚP PHỦ CUỘC GỌI (CHUẨN APP MOBILE) */}
+            {/* LỚP PHỦ CUỘC GỌI */}
             {callStatus !== 'idle' && (
                 <div className="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center backdrop-blur-md overflow-hidden">
                     
-                    {/* TRẠNG THÁI ĐANG ĐỔ CHUÔNG (Thu gọn cho Mobile) */}
                     {callStatus === 'ringing' && (
                         <div className="bg-white w-[85%] max-w-md p-8 md:p-10 rounded-[32px] md:rounded-[40px] flex flex-col items-center text-center shadow-2xl animate-pulse">
                             <div className="w-20 h-20 md:w-28 md:h-28 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-4xl md:text-5xl mb-4 md:mb-6 shadow-lg shadow-blue-500/50">
@@ -444,11 +478,8 @@ return (
                         </div>
                     )}
 
-                    {/* TRẠNG THÁI TRONG CUỘC GỌI (Tràn viền màn hình) */}
                     {(callStatus === 'calling' || callStatus === 'active') && (
                         <div className="flex flex-col items-center w-full h-full relative">
-                            
-                            {/* Hiển thị tên lúc đang chờ bắt máy */}
                             {callStatus === 'calling' && (
                                 <div className="absolute top-[10%] z-20 flex flex-col items-center pointer-events-none">
                                     <p className="text-white text-xl md:text-2xl font-medium animate-pulse drop-shadow-md">Đang đổ chuông...</p>
@@ -456,21 +487,16 @@ return (
                                 </div>
                             )}
 
-                            {/* KHUNG VIDEO / AUDIO */}
                             <div className="w-full h-full relative">
                                 {callData?.type === 'video' ? (
                                     <div className="w-full h-full bg-black relative">
-                                        {/* Video người kia: Phủ kín 100% màn hình */}
                                         <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                                        
-                                        {/* Video của mình: Thu nhỏ góc phải (PiP) */}
                                         <div className="absolute top-12 right-4 md:top-auto md:bottom-8 md:right-8 w-24 h-36 md:w-48 md:h-64 bg-slate-800 rounded-xl md:rounded-2xl overflow-hidden shadow-2xl border border-white/20 md:border-2 md:border-slate-600/50 z-10 cursor-pointer">
                                             <video ref={myVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover transform scale-x-[-1] transition-all ${isVideoOff ? 'opacity-0' : 'opacity-100'}`} />
                                             {isVideoOff && <div className="absolute inset-0 flex items-center justify-center text-white text-2xl md:text-4xl bg-slate-800">🚫</div>}
                                         </div>
                                     </div>
                                 ) : (
-                                    /* Giao diện gọi Thoại (Căn chỉnh lại khoảng cách cho vừa điện thoại) */
                                     <div className="flex flex-col md:flex-row gap-8 md:gap-16 items-center justify-center w-full h-full pb-20">
                                         <div className={`w-28 h-28 md:w-40 md:h-40 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-4xl md:text-5xl text-white shadow-[0_0_50px_rgba(99,102,241,0.5)] ${callStatus === 'calling' ? 'animate-pulse' : ''}`}>
                                             {user?.avatar ? <img src={user.avatar} className="w-full h-full rounded-full object-cover"/> : user?.fullName[0]}
@@ -485,7 +511,6 @@ return (
                                 )}
                             </div>
 
-                            {/* NÚT ĐIỀU KHIỂN DƯỚI ĐÁY (Trôi nổi xịn xò) */}
                             <div className="absolute bottom-10 md:bottom-12 flex gap-4 md:gap-6 items-center bg-slate-900/60 md:bg-slate-800/80 px-6 py-3 md:px-8 md:py-4 rounded-full backdrop-blur-xl z-20 shadow-2xl border border-white/10">
                                 <button onClick={toggleAudio} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg ${isMuted ? 'bg-white text-slate-900' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`}>{isMuted ? '🔇' : '🎤'}</button>
                                 {callData?.type === 'video' && <button onClick={toggleVideo} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg ${isVideoOff ? 'bg-white text-slate-900' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`}>{isVideoOff ? '🚫' : '📹'}</button>}
@@ -496,7 +521,7 @@ return (
                 </div>
             )}
 
-            {/* 1. THANH MENU BÊN TRÁI (SIDEBAR - ẨN TRÊN ĐIỆN THOẠI) */}
+            {/* THANH MENU VÀ DANH SÁCH ... */}
             <div className="hidden md:flex w-20 bg-[#0a192f] dark:bg-slate-950 rounded-[32px] flex-col items-center py-8 justify-between shadow-xl shrink-0 z-10 transition-colors">
                 <div className="flex flex-col gap-6 items-center w-full">
                     <div onClick={() => setActiveTab('profile')} className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-xl cursor-pointer shadow-lg overflow-hidden transition-all ${activeTab === 'profile' ? 'ring-4 ring-blue-500 bg-blue-600' : 'bg-blue-500 hover:scale-105'}`}>{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" alt="avatar" /> : user.fullName[0]}</div>
@@ -504,7 +529,6 @@ return (
                     <button onClick={() => setActiveTab('chat')} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'chat' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Trò chuyện"><i className="ri-chat-3-fill text-2xl"></i></button>
                     <button onClick={() => setActiveTab('friends')} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'friends' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Bạn bè"><i className="ri-user-smile-fill text-2xl"></i></button>
                     <button onClick={() => setActiveTab('groups')} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'groups' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Nhóm"><i className="ri-group-fill text-2xl"></i></button>
-                    
                     <div className="w-8 h-[1px] bg-slate-700 my-2"></div>
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-12 h-12 rounded-2xl flex items-center justify-center text-slate-400 hover:text-yellow-400 hover:bg-white/10 transition-all" title="Giao diện">
                         <i className={`text-2xl ${isDarkMode ? 'ri-sun-fill text-yellow-400' : 'ri-moon-fill'}`}></i>
@@ -513,10 +537,8 @@ return (
                 <button onClick={handleLogout} className="text-red-400 hover:text-red-300 p-3 bg-red-400/10 rounded-2xl transition-all hover:bg-red-400/20"><i className="ri-logout-box-r-line text-2xl"></i></button>
             </div>
 
-            {/* 2. DANH SÁCH (Ẩn trên điện thoại nếu đang mở khung chat) */}
             <div className={`w-full md:w-[340px] bg-white dark:bg-slate-800 md:rounded-[32px] shadow-sm flex-col overflow-hidden border-r md:border border-slate-100 dark:border-slate-700 shrink-0 z-10 transition-colors pb-[70px] md:pb-0 ${currentChat ? 'hidden md:flex' : 'flex'}`}>
                 <div className="p-6 pt-8 md:pt-6 overflow-y-auto h-full scrollbar-hide">
-                    {/* TAB CHAT */}
                     {activeTab === 'chat' && (
                         <>
                             <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-6 tracking-tight">Trò chuyện</h2>
@@ -540,8 +562,6 @@ return (
                             </div>
                         </>
                     )}
-
-                    {/* TAB TẠO NHÓM */}
                     {activeTab === 'groups' && (
                         <>
                             <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-6 tracking-tight">Nhóm Chat</h2>
@@ -563,8 +583,6 @@ return (
                             </div>
                         </>
                     )}
-
-                    {/* TAB BẠN BÈ */}
                     {activeTab === 'friends' && (
                         <>
                             <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-6 tracking-tight">Bạn bè</h2>
@@ -607,19 +625,15 @@ return (
                             </div>
                         </>
                     )}
-
-                    {/* TAB HỒ SƠ */}
                     {activeTab === 'profile' && (
                         <div className="flex flex-col h-full">
                             <div className="flex justify-between items-center mb-6">
                                 <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Hồ sơ</h2>
-                                {/* Nút đăng xuất & đổi nền ở Mobile */}
                                 <div className="md:hidden flex gap-2">
                                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-600 dark:text-yellow-400 flex items-center justify-center"><i className={isDarkMode ? 'ri-sun-fill' : 'ri-moon-fill'}></i></button>
                                     <button onClick={handleLogout} className="w-10 h-10 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-full flex items-center justify-center"><i className="ri-logout-box-r-line"></i></button>
                                 </div>
                             </div>
-
                             <div className="flex flex-col items-center mb-8">
                                 <input type="file" accept="image/*" ref={uploadAvatarInputRef} className="hidden" onChange={(e) => setAvatarFile(e.target.files[0])} />
                                 {avatarFile ? (
@@ -658,7 +672,6 @@ return (
                 </div>
             </div>
 
-            {/* 3. KHUNG CHAT CHÍNH (Phóng to trên điện thoại) */}
             <div className={`w-full md:flex-1 bg-white dark:bg-slate-800 md:rounded-[32px] shadow-sm flex-col overflow-hidden relative transition-colors ${!currentChat ? 'hidden md:flex' : 'flex absolute inset-0 z-50 md:relative md:z-0'}`}>
                 {!currentChat ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-center px-10">
@@ -670,11 +683,9 @@ return (
                     <>
                         <div className="h-[80px] border-b border-slate-100 dark:border-slate-700 flex items-center justify-between px-4 md:px-8 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md z-10 sticky top-0 transition-colors pt-safe">
                             <div className="flex items-center gap-3">
-                                {/* NÚT QUAY LẠI (Chỉ hiện trên điện thoại) */}
                                 <button onClick={() => setCurrentChat(null)} className="md:hidden w-10 h-10 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all">
                                     <i className="ri-arrow-left-s-line text-3xl"></i>
                                 </button>
-                                
                                 <div className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center font-bold text-slate-500 dark:text-slate-300 overflow-hidden relative">
                                     {currentChat.avatar ? <img src={currentChat.avatar} className="w-full h-full object-cover"/> : (currentChat.isGroup ? <i className="ri-group-fill"></i> : currentChat.fullName[0])}
                                     {currentChat.isOnline && !currentChat.isGroup && <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white dark:border-slate-800 rounded-full"></span>}
@@ -781,7 +792,6 @@ return (
                             )}
                         </div>
 
-                        {/* VÙNG NHẬP TIN NHẮN (CHUẨN MOBILE APP) */}
                         <div className="bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 p-3 md:p-4 transition-colors pb-safe">
                             {replyingTo && (
                                 <div className="mb-3 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 rounded-xl flex justify-between items-center">
@@ -794,21 +804,16 @@ return (
                             )}
                             
                             <div className="flex items-center gap-1 md:gap-2 h-12 w-full">
-                                {/* Các thẻ input ẩn (Giữ nguyên) */}
                                 <input type="file" accept="image/*" ref={imageInputRef} className="hidden" onChange={(e) => handleFileUpload(e, 'image')} />
                                 <input type="file" accept=".pdf,.doc,.docx,.zip,.txt" ref={fileInputRef} className="hidden" onChange={(e) => handleFileUpload(e, 'file')} />
                                 <input type="file" accept="video/mp4,video/webm,video/ogg" ref={videoInputRef} className="hidden" onChange={(e) => handleFileUpload(e, 'video')} />
                                 
-                                {/* CỤM NÚT CÔNG CỤ TỐI ƯU */}
                                 <div className="flex items-center relative">
-                                    
-                                    {/* 1. NÚT DẤU CỘNG (CHỈ HIỆN TRÊN ĐIỆN THOẠI) */}
                                     <div className="md:hidden relative">
                                         <button type="button" onClick={() => setShowAttachmentMenu(!showAttachmentMenu)} className="text-slate-400 hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400 transition-all w-9 h-9 rounded-full flex items-center justify-center text-2xl">
                                             <i className={`ri-add-circle-${showAttachmentMenu ? 'fill text-blue-500' : 'line'}`}></i>
                                         </button>
 
-                                        {/* MENU THẢ LÊN KHI BẤM DẤU CỘNG */}
                                         {showAttachmentMenu && (
                                             <div className="absolute bottom-[130%] left-0 z-50 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] rounded-2xl p-2 flex flex-col gap-1 w-[160px] origin-bottom-left transition-all">
                                                 <button type="button" onClick={() => { imageInputRef.current.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 p-2 rounded-xl text-[13px] font-bold text-slate-700 dark:text-slate-200 transition-colors">
@@ -827,14 +832,12 @@ return (
                                         )}
                                     </div>
 
-                                    {/* 2. DÀN NÚT NGANG (CHỈ HIỆN TRÊN MÁY TÍNH) */}
                                     <div className="hidden md:flex gap-1 items-center">
                                         <button type="button" onClick={() => imageInputRef.current.click()} className="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 transition-all w-10 h-10 rounded-full flex items-center justify-center text-xl"><i className="ri-image-add-fill"></i></button>
                                         <button type="button" onClick={() => videoInputRef.current.click()} className="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 transition-all w-10 h-10 rounded-full flex items-center justify-center text-xl"><i className="ri-video-add-fill"></i></button>
                                         <button type="button" onClick={() => fileInputRef.current.click()} className="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 transition-all w-10 h-10 rounded-full flex items-center justify-center text-xl"><i className="ri-attachment-2"></i></button>
                                     </div>
 
-                                    {/* NÚT THẢ ICON CẢM XÚC (Hiện trên cả Mobile và PC) */}
                                     <div className="relative">
                                         <button type="button" onClick={() => setShowEmoji(!showEmoji)} className="text-slate-400 hover:text-yellow-500 dark:text-slate-500 dark:hover:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-slate-700 transition-all w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center text-xl"><i className="ri-emotion-happy-fill"></i></button>
                                         {showEmoji && <div className="absolute bottom-[130%] left-0 md:-left-20 z-50 shadow-2xl scale-90 origin-bottom-left"><EmojiPicker theme={isDarkMode ? 'dark' : 'light'} onEmojiClick={(e) => { setNewMessage(prev => prev + e.emoji); setShowEmoji(false); }} /></div>}
@@ -842,7 +845,6 @@ return (
 
                                 </div>
 
-                                {/* KHUNG GÕ CHỮ VÀ NÚT GỬI */}
                                 <form onSubmit={handleSendMessage} className="flex-1 flex gap-2 md:gap-3 h-full items-center ml-1 md:ml-2">
                                     <input type="text" placeholder="Nhắn tin..." value={newMessage} 
                                         onChange={(e) => { setNewMessage(e.target.value); socket.emit('typing', { senderId: user.id, receiverId: currentChat._id }); if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current); typingTimeoutRef.current = setTimeout(() => socket.emit('stop_typing', { senderId: user.id, receiverId: currentChat._id }), 2000); }} 
@@ -858,7 +860,6 @@ return (
                 )}
             </div>
 
-            {/* THANH ĐIỀU HƯỚNG DƯỚI ĐÁY (CHỈ HIỂN THỊ TRÊN MOBILE VÀ KHI KHÔNG TRONG KHUNG CHAT) */}
             {!currentChat && (
                 <div className="md:hidden fixed bottom-0 left-0 w-full h-[70px] bg-white dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800 flex items-center justify-around z-40 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] pb-safe px-2 transition-colors">
                     <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'chat' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>

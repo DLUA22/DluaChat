@@ -462,7 +462,7 @@ export default function Home() {
             
             {/* LỚP PHỦ CUỘC GỌI */}
             {callStatus !== 'idle' && (
-                <div className="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center backdrop-blur-md overflow-hidden">
+                <div className="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center backdrop-blur-md overflow-hidden touch-none">
                     
                     {callStatus === 'ringing' && (
                         <div className="bg-white w-[85%] max-w-md p-8 md:p-10 rounded-[32px] md:rounded-[40px] flex flex-col items-center text-center shadow-2xl animate-pulse">
@@ -780,16 +780,27 @@ export default function Home() {
                                     </div>
                                 </div>
                             )}
-                            <div ref={scrollRef} />
-
-                            {lastMessage && lastMessage.senderId === user.id && lastMessage.isRead && !currentChat.isGroup && (
-                                <div className="flex justify-end mt-1 pr-2">
+                            {/* BẬT LẠI HIỂN THỊ TRẠNG THÁI "ĐÃ XEM" */}
+                            {lastMessage && getSenderId(lastMessage.senderId) === user.id && lastMessage.isRead && !currentChat.isGroup && (
+                                <div className="flex justify-end mt-1 pr-2 mb-2">
                                     <div className="flex items-center gap-1.5 opacity-70">
-                                        <div className="w-3 h-3 rounded-full overflow-hidden">{currentChat.avatar ? <img src={currentChat.avatar} className="w-full h-full object-cover"/> : <div className="w-full h-full bg-slate-300 flex items-center justify-center text-[8px] text-white">{currentChat.fullName[0]}</div>}</div>
-                                        <span className="text-[10px] text-slate-500 font-medium">{formatReadTime(lastMessage.readAt)}</span>
+                                        <div className="w-3 h-3 rounded-full overflow-hidden border border-slate-200">
+                                            {currentChat.avatar ? (
+                                                <img src={currentChat.avatar} className="w-full h-full object-cover" alt="seen-avatar" />
+                                            ) : (
+                                                <div className="w-full h-full bg-slate-300 flex items-center justify-center text-[8px] text-white">
+                                                    {currentChat.fullName[0]}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <span className="text-[10px] text-slate-500 font-medium">
+                                            {formatReadTime(lastMessage.readAt)}
+                                        </span>
                                     </div>
                                 </div>
                             )}
+
+                            <div ref={scrollRef} />
                         </div>
 
                         <div className="bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 p-3 md:p-4 transition-colors pb-safe">

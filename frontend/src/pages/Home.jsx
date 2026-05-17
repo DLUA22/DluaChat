@@ -150,7 +150,8 @@ export default function Home() {
 
     // Init & Auth
     useEffect(() => {
-        const loggedInUser = localStorage.getItem('user');
+        const loggedInUser = localStorage.getItem('user') || sessionStorage.getItem('user');
+        
         if (!loggedInUser) navigate('/login');
         else {
             const parsedUser = JSON.parse(loggedInUser);
@@ -163,7 +164,6 @@ export default function Home() {
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [navigate]);
-
     // Push Notifications Setup
     useEffect(() => {
         const setupPushNotifications = async () => {
@@ -569,8 +569,10 @@ export default function Home() {
                     <button 
                         onClick={() => {
                             toast.dismiss(t.id);
+                            // SỬA TẠI ĐÂY: Xóa sạch cả 2 kho để tránh lỗi kẹt giao diện sáng/tối hoặc token cũ
                             localStorage.clear();
-                            navigate('/login');
+                            sessionStorage.clear();
+                            navigate('/login', { replace: true });
                         }} 
                         className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-xl text-sm font-bold transition-colors shadow-md"
                     >
@@ -635,7 +637,7 @@ export default function Home() {
         ), { duration: Infinity, position: 'top-center' }); 
     };
 
-    const handleSaveAvatar = async () => { 
+const handleSaveAvatar = async () => { 
         if (editorRef.current) { 
             const canvas = editorRef.current.getImageScaledToCanvas(); 
             canvas.toBlob(async (blob) => { 
@@ -647,7 +649,13 @@ export default function Home() {
                     const res = await axios.post('https://dlua-chat-api.onrender.com/api/auth/update-avatar', { userId: user.id, avatarUrl }); 
                     const updatedUser = { ...user, avatar: res.data.avatar }; 
                     setUser(updatedUser); 
-                    localStorage.setItem('user', JSON.stringify(updatedUser)); 
+                    
+                    if (localStorage.getItem('user')) {
+                        localStorage.setItem('user', JSON.stringify(updatedUser)); 
+                    } else {
+                        sessionStorage.setItem('user', JSON.stringify(updatedUser));
+                    }
+
                     setAvatarFile(null); 
                     toast.success("Đã cập nhật Avatar!"); 
                 } catch (err) { toast.error("Lỗi cập nhật Avatar"); } 

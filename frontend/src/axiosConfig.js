@@ -1,4 +1,4 @@
-import axios from '../axiosConfig';
+import axios from 'axios';
 
 const api = axios.create({
     baseURL: 'https://dlua-chat-api.onrender.com'

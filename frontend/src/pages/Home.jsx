@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import axios from 'axios';
+import axios from '../axiosConfig';
 import { io } from 'socket.io-client';
 import toast, { Toaster } from 'react-hot-toast';
 import EmojiPicker from 'emoji-picker-react';

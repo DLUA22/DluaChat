@@ -20,16 +20,28 @@ exports.register = async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Lỗi server', error: error.message }); }
 };
 
-// 2. Đăng nhập
+// 2. Đăng nhập (Đã nâng cấp Access/Refresh Token)
 exports.login = async (req, res) => {
     try {
         const { username, password } = req.body;
         const user = await User.findOne({ username });
         if (!user) return res.status(400).json({ message: 'Tài khoản không tồn tại!' });
+        
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: 'Sai mật khẩu!' });
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        res.status(200).json({ message: 'Đăng nhập thành công', token, user: { id: user._id, fullName: user.fullName, username: user.username, uniqueName: user.uniqueName, avatar: user.avatar } });
+        
+        // Tạo Access Token (Sống 15 phút - Dùng để chat)
+        const accessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
+        
+        // Tạo Refresh Token (Sống 30 ngày - Chỉ dùng để xin Access Token mới)
+        const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d' });
+        
+        res.status(200).json({ 
+            message: 'Đăng nhập thành công', 
+            accessToken, 
+            refreshToken, 
+            user: { id: user._id, fullName: user.fullName, username: user.username, uniqueName: user.uniqueName, avatar: user.avatar } 
+        });
     } catch (error) { res.status(500).json({ message: 'Lỗi server', error: error.message }); }
 };
 
@@ -86,7 +98,7 @@ exports.respondRequest = async (req, res) => {
 // 7. Lấy danh sách bạn bè
 exports.getFriends = async (req, res) => {
     try {
-        const user = await User.findById(req.params.userId).populate('friends', 'fullName uniqueName avatar isOnline lastSeen'); // ĐẢM BẢO CÓ isOnline, lastSeen
+        const user = await User.findById(req.params.userId).populate('friends', 'fullName uniqueName avatar isOnline lastSeen');
         res.status(200).json(user.friends);
     } catch (error) { res.status(500).json({ message: 'Lỗi server' }); }
 };
@@ -125,4 +137,27 @@ exports.updateAvatar = async (req, res) => {
         const user = await User.findByIdAndUpdate(userId, { avatar: avatarUrl }, { new: true });
         res.status(200).json({ avatar: user.avatar });
     } catch (error) { res.status(500).json({ message: 'Lỗi cập nhật ảnh' }); }
+};
+
+// 11. [API MỚI] Cấp lại Access Token mới
+exports.refreshToken = async (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(401).json({ message: "Không tìm thấy token" });
+
+    try {
+        // Kiểm tra xem Refresh Token có hợp lệ và còn hạn không
+        const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+        
+        // Nếu hợp lệ, cấp cho nó cái chìa Access Token mới (15 phút)
+        const newAccessToken = jwt.sign(
+            { id: decoded.id }, 
+            process.env.JWT_SECRET, 
+            { expiresIn: '15m' }
+        );
+
+        res.status(200).json({ accessToken: newAccessToken });
+    } catch (error) {
+        // Nếu Refresh Token cũng hết hạn (qua 30 ngày)
+        res.status(403).json({ message: "Phiên đăng nhập hết hạn, vui lòng đăng nhập lại" });
+    }
 };

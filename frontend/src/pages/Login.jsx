@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import axios from '../axiosConfig';
 import { motion } from 'framer-motion';
 
 export default function Login() {
     const [formData, setFormData] = useState({ username: '', password: '' });
     const [showPassword, setShowPassword] = useState(false);
+    const [isRemember, setIsRemember] = useState(true); // Trạng thái giữ đăng nhập
     const [error, setError] = useState('');
     const navigate = useNavigate();
 
@@ -13,10 +14,21 @@ export default function Login() {
         e.preventDefault();
         try {
             const res = await axios.post('https://dlua-chat-api.onrender.com/api/auth/login', formData);
-            localStorage.setItem('token', res.data.token);
-            localStorage.setItem('user', JSON.stringify(res.data.user));
             
-            // Đã thêm { replace: true } để chặn lùi trang (Back)
+            const { accessToken, refreshToken, user } = res.data;
+
+            if (isRemember) {
+                // Ghi nhớ: Lưu vĩnh viễn (Tắt trình duyệt mở lại vẫn còn)
+                localStorage.setItem('accessToken', accessToken);
+                localStorage.setItem('refreshToken', refreshToken);
+                localStorage.setItem('user', JSON.stringify(user));
+            } else {
+                // Không ghi nhớ: Lưu tạm thời (Tắt trình duyệt là mất, an toàn cho máy công cộng)
+                sessionStorage.setItem('accessToken', accessToken);
+                sessionStorage.setItem('refreshToken', refreshToken);
+                sessionStorage.setItem('user', JSON.stringify(user));
+            }
+            
             navigate('/', { replace: true }); 
         } catch (err) {
             setError(err.response?.data?.message || 'Thông tin không chính xác!');
@@ -26,7 +38,6 @@ export default function Login() {
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="relative min-h-screen bg-[#eaf4f4] w-full flex items-center justify-center font-['Be_Vietnam_Pro'] p-4">
             
-            {/* HÌNH ẢNH NỀN: Được ẩn đằng sau toàn bộ giao diện */}
             <div className="absolute inset-0 z-0 pointer-events-none">
                 <img 
                     src="/image.png" 
@@ -35,7 +46,6 @@ export default function Login() {
                 />
             </div>
 
-            {/* PHẦN FORM: Xếp chồng lên trên hình ảnh nền, được định tâm */}
             <div className="w-full max-w-[400px] bg-white/70 p-10 rounded-3xl backdrop-blur-sm shadow-xl z-10 relative">
                 <h1 className="text-[40px] md:text-[44px] font-bold text-[#142d2d] mb-10 text-center tracking-tight">
                     Đăng nhập
@@ -73,7 +83,16 @@ export default function Login() {
                         </button>
                     </div>
 
-                    <div className="text-right mt-2">
+                    <div className="flex items-center justify-between mt-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={isRemember} 
+                                onChange={(e) => setIsRemember(e.target.checked)}
+                                className="w-4 h-4 accent-[#142d2d] rounded border-slate-300 cursor-pointer"
+                            />
+                            <span className="text-sm text-slate-600 font-medium">Giữ đăng nhập</span>
+                        </label>
                     </div>
 
                     <button 

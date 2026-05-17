@@ -85,20 +85,24 @@ const io = new Server(server, {
     cors: corsOptions
 });
 
-// Biến lưu trữ trạng thái cuộc gọi và socket
 let activeCalls = {};
 let userSockets = {};
 
 io.on('connection', (socket) => {
     console.log('⚡ Một người dùng đã kết nối:', socket.id);
-
-    // --- A. QUẢN LÝ TRẠNG THÁI ONLINE ---
     socket.on('join_server', async (userId) => {
         try {
             if (!userId) return;
-            socket.join(userId);
+            socket.join(userId); 
             socket.userId = userId;
             
+            if (!userSockets[userId]) {
+                userSockets[userId] = [];
+            }
+            if (!userSockets[userId].includes(socket.id)) {
+                userSockets[userId].push(socket.id);
+            }
+
             const updatedUser = await User.findByIdAndUpdate(userId, { isOnline: true }, { new: true });          
             socket.broadcast.emit('user_status_changed', { 
                 userId: userId, 
@@ -106,17 +110,10 @@ io.on('connection', (socket) => {
                 lastSeen: updatedUser?.lastSeen 
             });
 
-            // Kiểm tra cuộc gọi lỡ/đang chờ khi vừa vào app
             const ongoingCall = Object.values(activeCalls).find(call => call.userToCall === userId);
             if (ongoingCall) {
                 socket.emit('call_incoming', ongoingCall);
             }
-
-            // Xử lý đăng nhập nhiều nơi (Force Logout thiết bị cũ)
-            if (userSockets[userId] && userSockets[userId] !== socket.id) {
-                io.to(userSockets[userId]).emit('force_logout');
-            }
-            userSockets[userId] = socket.id;
 
         } catch (error) {
             console.error("❌ Lỗi join_server:", error.message);
@@ -125,18 +122,19 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', async () => {
         try {
-            if (socket.userId) {
-                const now = new Date();
-                await User.findByIdAndUpdate(socket.userId, { isOnline: false, lastSeen: now });
-                socket.broadcast.emit('user_status_changed', { userId: socket.userId, isOnline: false, lastSeen: now });
+            if (socket.userId && userSockets[socket.userId]) {
+                userSockets[socket.userId] = userSockets[socket.userId].filter(id => id !== socket.id);
                 
-                // Dọn dẹp cuộc gọi nếu người dùng rớt mạng
+                if (userSockets[socket.userId].length === 0) {
+                    const now = new Date();
+                    await User.findByIdAndUpdate(socket.userId, { isOnline: false, lastSeen: now });
+                    socket.broadcast.emit('user_status_changed', { userId: socket.userId, isOnline: false, lastSeen: now });
+                    delete userSockets[socket.userId];
+                }
+                
                 if (activeCalls[socket.userId]) {
                     socket.to(activeCalls[socket.userId].userToCall).emit('call_ended');
                     delete activeCalls[socket.userId];
-                }
-                if (userSockets[socket.userId] === socket.id) {
-                    delete userSockets[socket.userId];
                 }
             }
         } catch (error) {

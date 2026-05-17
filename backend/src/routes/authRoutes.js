@@ -4,12 +4,13 @@ const router = express.Router();
 const { 
     register, login, searchUser, 
     sendFriendRequest, getPendingRequests, respondRequest, getFriends,
-    unfriend, changePassword, updateAvatar 
+    unfriend, changePassword, updateAvatar, refreshToken
 } = require('../controllers/authController');
 
 // Đăng nhập / Đăng ký
 router.post('/register', register);
 router.post('/login', login);
+router.post('/refresh-token', refreshToken); 
 
 // Người dùng
 router.get('/search', searchUser);

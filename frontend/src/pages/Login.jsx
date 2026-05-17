@@ -15,7 +15,9 @@ export default function Login() {
             const res = await axios.post('https://dlua-chat-api.onrender.com/api/auth/login', formData);
             localStorage.setItem('token', res.data.token);
             localStorage.setItem('user', JSON.stringify(res.data.user));
-            navigate('/'); 
+            
+            // Đã thêm { replace: true } để chặn lùi trang (Back)
+            navigate('/', { replace: true }); 
         } catch (err) {
             setError(err.response?.data?.message || 'Thông tin không chính xác!');
         }

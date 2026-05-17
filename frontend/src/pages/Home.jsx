@@ -74,7 +74,10 @@ export default function Home() {
     // 1. STATES: UI & User
     const [user, setUser] = useState(null);
     const [activeTab, setActiveTab] = useState('chat');
-    const [isDarkMode, setIsDarkMode] = useState(false);
+    const [isDarkMode, setIsDarkMode] = useState(() => {
+        const savedTheme = localStorage.getItem('dlua_theme');
+        return savedTheme === 'dark';
+    });
     const [deferredPrompt, setDeferredPrompt] = useState(null);
     const [isInstallable, setIsInstallable] = useState(false);
 
@@ -191,7 +194,15 @@ export default function Home() {
 
     // Unread Counts & Theme Sync
     useEffect(() => { localStorage.setItem('dlua_unread', JSON.stringify(unreadCounts)); }, [unreadCounts]);
-    useEffect(() => { document.documentElement.classList.toggle('dark', isDarkMode); }, [isDarkMode]);
+    useEffect(() => {
+        if (isDarkMode) {
+            document.documentElement.classList.add('dark');
+            localStorage.setItem('dlua_theme', 'dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+            localStorage.setItem('dlua_theme', 'light');
+        }
+    }, [isDarkMode]);
 
     // PWA Install Prompt
     useEffect(() => {
@@ -339,7 +350,7 @@ export default function Home() {
             socket.off('friend_request_accepted'); socket.off('group_added'); socket.off('group_updated');
             socket.off('call_incoming'); socket.off('call_accepted'); socket.off('ice_candidate'); socket.off('call_ended'); socket.off('force_logout');
         };
-    }, [user, isDarkMode]); // Đã gỡ bỏ currentChat khỏi dependency
+    }, [user, isDarkMode]); 
 
     useEffect(() => {
         if (myVideoRef.current && localStream) myVideoRef.current.srcObject = localStream;
@@ -543,7 +554,41 @@ export default function Home() {
     };
 
     // User / Auth Handlers
-    const handleLogout = () => { localStorage.clear(); navigate('/login'); };
+    const handleLogout = () => {
+        toast((t) => (
+            <div className="flex flex-col gap-3 min-w-[250px] p-2">
+                <div className="flex flex-col items-center gap-2">
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-2xl">
+                        <i className="ri-logout-box-r-line"></i>
+                    </div>
+                    <p className="text-[15px] font-bold text-slate-800 text-center">Bạn muốn đăng xuất?</p>
+                    <p className="text-xs text-slate-500 text-center">Bạn sẽ không nhận được tin nhắn mới nữa.</p>
+                </div>
+                
+                <div className="flex gap-2 mt-4">
+                    <button 
+                        onClick={() => {
+                            toast.dismiss(t.id);
+                            localStorage.clear();
+                            navigate('/login');
+                        }} 
+                        className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-xl text-sm font-bold transition-colors shadow-md"
+                    >
+                        Đăng xuất
+                    </button>
+                    <button 
+                        onClick={() => toast.dismiss(t.id)}
+                        className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-2 rounded-xl text-sm font-bold transition-colors"
+                    >
+                        Hủy
+                    </button>
+                </div>
+            </div>
+        ), { 
+            duration: Infinity,
+            position: 'top-center' 
+        });
+    };
 
     const handleGlobalSearch = async (e) => { 
         e.preventDefault(); setSearchResult(null); 

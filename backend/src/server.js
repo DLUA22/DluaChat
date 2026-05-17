@@ -129,31 +129,37 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- B. TIN NHẮN ---
+    // --- B. TIN NHẮN (ĐÃ CẬP NHẬT ẨN NỘI DUNG BẢO MẬT) ---
     socket.on('send_message', (data) => {
         if (data.groupId) {
             socket.to(data.groupId).emit('receive_message', data);
         } else {
+            // 1. Gửi tin nhắn qua Socket.io theo thời gian thực (Nếu người nhận đang mở app)
             socket.to(data.receiverId).emit('receive_message', data);
+
+            // 2. Bắn thông báo nổi bảo mật (Nếu người nhận đang tắt app/khóa màn hình)
             const sub = userSubscriptions[data.receiverId];
             if (sub) {
-                let messageBody = "Bạn có tin nhắn mới";
-                if (data.text) {
-                    messageBody = data.text;
-                } else if (data.imageUrl) {
-                    messageBody = "[Hình ảnh]";
+                // Mặc định ẩn nội dung tin nhắn chữ để bảo mật luồng AES
+                let messageBody = "Đã gửi cho bạn một tin nhắn";
+                
+                // Nhận diện linh hoạt theo loại đính kèm để thông báo tường minh hơn
+                if (data.imageUrl) {
+                    messageBody = "Đã gửi cho bạn một hình ảnh";
+                } else if (data.videoUrl) {
+                    messageBody = "Đã gửi cho bạn một video";
                 } else if (data.fileUrl) {
-                    messageBody = "[Tập tin]";
+                    messageBody = "Đã gửi cho bạn một tập tin";
                 }
 
                 const payload = JSON.stringify({
                     title: data.senderName || 'Tin nhắn mới',
                     body: messageBody,
-                    url: '/'
+                    url: '/' // Khi nhấn vào thông báo sẽ đánh thức app nhảy vào trang chủ
                 });
 
                 webpush.sendNotification(sub, payload)
-                    .catch(err => console.error("Lỗi gửi Push Tin nhắn:", err));
+                    .catch(err => console.error("Lỗi gửi Push Tin nhắn Bảo mật:", err));
             }
         }
     });

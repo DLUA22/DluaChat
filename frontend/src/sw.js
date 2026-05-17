@@ -7,10 +7,12 @@ self.addEventListener('push', (event) => {
     const title = data.title || 'DluaChat';
     const options = {
         body: data.body || 'Bạn có thông báo mới',
-        icon: '/favicon_io/android-chrome-192x192.png',
-        badge: '/favicon_io/android-chrome-192x192.png',
+        icon: '/favicon_io/logo.png',
+        badge: '/favicon_io/logo.png',
+        tag: 'call-notification',
+        renotify: true,
+        vibrate: [200, 100, 200],
         data: data.url,
-        vibrate: [200, 100, 200, 100, 200, 100, 200] // Rung điện thoại
     };
     event.waitUntil(self.registration.showNotification(title, options));
 });

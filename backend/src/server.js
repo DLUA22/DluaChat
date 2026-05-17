@@ -135,6 +135,26 @@ io.on('connection', (socket) => {
             socket.to(data.groupId).emit('receive_message', data);
         } else {
             socket.to(data.receiverId).emit('receive_message', data);
+            const sub = userSubscriptions[data.receiverId];
+            if (sub) {
+                let messageBody = "Bạn có tin nhắn mới";
+                if (data.text) {
+                    messageBody = data.text;
+                } else if (data.imageUrl) {
+                    messageBody = "[Hình ảnh]";
+                } else if (data.fileUrl) {
+                    messageBody = "[Tập tin]";
+                }
+
+                const payload = JSON.stringify({
+                    title: data.senderName || 'Tin nhắn mới',
+                    body: messageBody,
+                    url: '/'
+                });
+
+                webpush.sendNotification(sub, payload)
+                    .catch(err => console.error("Lỗi gửi Push Tin nhắn:", err));
+            }
         }
     });
 

@@ -7,11 +7,9 @@ const instance = axios.create({
 instance.interceptors.request.use(
     (config) => {
         const userStr = localStorage.getItem('user') || sessionStorage.getItem('user');
-        
         if (userStr) {
             const user = JSON.parse(userStr);
             const token = user.token || user.accessToken; 
-            
             if (token) {
                 config.headers['Authorization'] = `Bearer ${token}`;
             }
@@ -19,6 +17,18 @@ instance.interceptors.request.use(
         return config;
     },
     (error) => Promise.reject(error)
+);
+
+instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = '/login';
+        }
+        return Promise.reject(error);
+    }
 );
 
 export default instance;

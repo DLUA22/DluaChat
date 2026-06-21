@@ -1299,13 +1299,12 @@ export default function Home() {
                                                                         setTimeout(() => target.classList.remove('bg-blue-50', 'dark:bg-blue-900/50', 'rounded-2xl', 'p-1'), 1500);
                                                                     }
                                                                 }}
-                                                                className={`cursor-pointer text-[12px] mb-1 px-3 py-1.5 rounded-xl max-w-full break-words whitespace-pre-wrap opacity-80 hover:opacity-100 transition-opacity ${isMe ? 'bg-indigo-100 text-indigo-800 self-end' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 self-start'}`}
+                                                                className={`cursor-pointer mb-1 px-3 py-2 rounded-xl max-w-full opacity-80 hover:opacity-100 transition-opacity ${isMe ? 'bg-indigo-100 text-indigo-800 self-end' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 self-start'}`}
                                                             >
-                                                                ↩ {msg.replyTo.text 
-                                                                    ? (msg.replyTo.text.split(' ').length > 40 
-                                                                        ? msg.replyTo.text.split(' ').slice(0, 40).join(' ') + '...' 
-                                                                        : msg.replyTo.text) 
-                                                                    : "Đã trả lời đính kèm"}
+                                                                <div className="text-[12px] line-clamp-3 break-words whitespace-pre-wrap">
+                                                                    <span className="font-bold mr-1">↩</span> 
+                                                                    {msg.replyTo.text || "Đã trả lời đính kèm"}
+                                                                </div>
                                                             </div>
                                                         )}
                                                         {msg.imageUrl && <img src={msg.imageUrl} className={`max-w-full h-auto max-h-56 object-cover rounded-2xl shadow-sm ${isMe ? 'ml-auto' : 'mr-auto'}`} />}

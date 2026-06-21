@@ -112,7 +112,8 @@ exports.getUnreadCounts = async (req, res) => {
                 { receiverId: userId },
                 { groupId: { $in: groupIds } }
             ],
-            'readBy.userId': { $ne: userId }
+            'readBy.userId': { $ne: userId },
+            isRead: { $ne: true }
         });
         const counts = {};
         unreadMessages.forEach(msg => {
@@ -124,5 +125,37 @@ exports.getUnreadCounts = async (req, res) => {
     } catch (error) {
         console.error("Lỗi đếm tin nhắn chưa đọc:", error);
         res.status(500).json({ message: 'Lỗi lấy số lượng tin nhắn chưa đọc' });
+    }
+};
+exports.migrateDatabase = async (req, res) => {
+    try {
+        const oldMessages = await Message.find({ isRead: { $exists: true } });
+        let migratedCount = 0;
+
+        for (let msg of oldMessages) {
+            if (msg.isRead === true && !msg.groupId) {
+                msg.readBy = [{ 
+                    userId: msg.receiverId, 
+                    readAt: msg.readAt || msg.updatedAt 
+                }];
+            } else {
+                msg.readBy = [];
+            }
+            await Message.updateOne(
+                { _id: msg._id }, 
+                { 
+                    $set: { readBy: msg.readBy }, 
+                    $unset: { isRead: 1, readAt: 1 } 
+                }
+            );
+            migratedCount++;
+        }
+        res.status(200).json({ 
+            message: "Đã nâng cấp xong Database an toàn!", 
+            totalMigrated: migratedCount 
+        });
+    } catch (error) {
+        console.error("Lỗi Migrate:", error);
+        res.status(500).json({ message: "Lỗi trong quá trình nâng cấp DB" });
     }
 };

@@ -8,7 +8,7 @@ const verifyToken = (req, res, next) => {
         if (!token) {
             return res.status(401).json({ message: "Từ chối truy cập: Không có Token!" });
         }
-        const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || "your_secret_key");
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.user = decoded;
         next();
     } catch (error) {

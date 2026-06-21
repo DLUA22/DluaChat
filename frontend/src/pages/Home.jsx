@@ -238,6 +238,9 @@ export default function Home() {
 
         const handleReceiveMessage = (data) => {
             if (data.text && data.type === 'text') data.text = decryptText(data.text);
+            if (data.replyTo && data.replyTo.text && data.replyTo.type === 'text') {
+                data.replyTo.text = decryptText(data.replyTo.text);
+            }
             const isGroupMsg = data.groupId !== null && data.groupId !== undefined;
             const incomingChatId = isGroupMsg ? String(data.groupId) : String(getSenderId(data.senderId));
             const currentOpenId = currentChatRef.current ? String(currentChatRef.current._id) : null;
@@ -416,20 +419,22 @@ export default function Home() {
             const res = await axios.get(`https://dlua-chat-api.onrender.com/api/messages/${user.id}/${chat._id}?page=${pageNum}&limit=20&isGroup=${isGroupFlag}`);
             
             const fetchedMessages = res.data.map(msg => {
-                if (msg.text && msg.type === 'text') return { ...msg, text: decryptText(msg.text) };
-                return msg;
+                let decryptedText = msg.text;
+                if (msg.text && msg.type === 'text') decryptedText = decryptText(msg.text);
+                let decryptedReplyTo = msg.replyTo;
+                if (msg.replyTo && msg.replyTo.text && msg.replyTo.type === 'text') {
+                    decryptedReplyTo = { ...msg.replyTo, text: decryptText(msg.replyTo.text) };
+                }
+                return { ...msg, text: decryptedText, replyTo: decryptedReplyTo };
             });
 
             if (pageNum === 1) {
                 setMessages(fetchedMessages);
-                
-                // ĐÃ SỬA CHUẨN: Lấy tin nhắn do người khác gửi mà mình CHƯA có tên trong mảng readBy
                 const hasUnread = fetchedMessages.some(m => {
                     if (getSenderId(m.senderId) === user.id) return false;
                     if (m.readBy) return !m.readBy.some(r => r.userId === user.id);
-                    return !m.isRead; // Phòng trường hợp tin nhắn cũ còn sót lại
+                    return !m.isRead;
                 });
-
                 if (hasUnread) {
                     await axios.post('https://dlua-chat-api.onrender.com/api/messages/mark-read', { 
                         chatId: chat._id, 
@@ -1262,9 +1267,11 @@ export default function Home() {
                                 );
 
                                 return (
-                                    <div key={index} className="flex flex-col">
+                                    <div key={index} id={`msg-${msg._id}`} className="flex flex-col transition-colors duration-500">
                                         {showTime && <span className="text-[11px] text-slate-400 font-medium mb-3 text-center w-full block">{formatMessageTime(msg.createdAt)}</span>}
+                                        
                                         <div className={`flex items-end gap-2 ${isMe ? 'justify-end' : 'justify-start'} group relative mb-2`}>
+                                            
                                             {!isMe && currentChat.isGroup && msg.senderId && (
                                                 <div className="flex flex-col items-center gap-1 mb-1 mr-1">
                                                     <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold overflow-hidden shadow-sm">
@@ -1275,29 +1282,43 @@ export default function Home() {
 
                                             <div className="relative max-w-[85%] md:max-w-[75%] flex flex-col gap-1.5" onContextMenu={(e) => { e.preventDefault(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }}>
                                                 {!isMe && currentChat.isGroup && msg.senderId && <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-2 font-medium">{msg.senderId.fullName}</span>}
-                                                {msg.replyTo && !msg.replyTo.isUnsent && <div className={`text-[12px] mb-1 px-3 py-1.5 rounded-xl max-w-full line-clamp-1 opacity-80 ${isMe ? 'bg-indigo-100 text-indigo-800 self-end' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 self-start'}`}>↩ {msg.replyTo.text || "Đã trả lời đính kèm"}</div>}
-                                                {msg.imageUrl && <img src={msg.imageUrl} className={`max-w-full h-auto max-h-56 object-cover rounded-2xl shadow-sm ${isMe ? 'ml-auto' : 'mr-auto'}`} />}
-                                                {msg.videoUrl && <video src={msg.videoUrl} controls className={`max-w-full h-auto max-h-56 rounded-2xl shadow-sm bg-black ${isMe ? 'ml-auto' : 'mr-auto'}`} />}
-                                                {msg.fileUrl && <a href={msg.fileUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 p-3 rounded-2xl transition-all text-sm font-medium shadow-sm w-fit ${isMe ? 'bg-indigo-50 text-indigo-700 ml-auto' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 mr-auto'}`}>📎 <span className="truncate max-w-[150px]">{msg.fileName}</span></a>}
-                                                {msg.text && <div className={`py-2 px-4 rounded-[22px] text-[15px] shadow-sm w-fit max-w-full break-words whitespace-pre-wrap ${isMe ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-sm ml-auto' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-600 rounded-tl-sm mr-auto'}`}>{msg.text}</div>}
-                                                {msg.reactions && msg.reactions.length > 0 && <div className={`absolute -bottom-3 ${isMe ? 'right-2' : 'left-2'} bg-white border border-slate-100 shadow-md rounded-full px-2 py-0.5 text-xs flex gap-1 z-10`}>{msg.reactions.map((r, i) => <span key={i}>{r.emoji}</span>)}</div>}
-                                                
-                                                <div className={`md:hidden absolute top-[100%] mt-3 flex items-center gap-1.5 transition-all duration-200 bg-white border border-slate-200 shadow-lg rounded-full px-3 py-1.5 z-30 ${activeMenuId === msg._id ? 'opacity-100 visible translate-y-0' : 'opacity-0 invisible -translate-y-2'} ${isMe ? 'right-0' : 'left-0'}`}>
-                                                    <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">↩️</button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleReact(msg._id, '❤️'); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">❤️</button>
-                                                    <button onClick={(e) => { e.stopPropagation(); handleReact(msg._id, '😂'); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">😂</button>
-                                                    {isMe && <button onClick={(e) => { e.stopPropagation(); handleUnsend(msg._id); setActiveMenuId(null); }} className="hover:bg-red-50 p-1.5 rounded-full text-sm text-red-500">🗑️</button>}
-                                                </div>
+                                                {msg.isUnsent ? (
+                                                    <div className={`py-2 px-4 rounded-[22px] text-[14px] italic border ${isMe ? 'bg-transparent border-slate-300 dark:border-slate-600 text-slate-400 ml-auto' : 'bg-transparent border-slate-300 dark:border-slate-600 text-slate-400 mr-auto'}`}>
+                                                        🚫 Tin nhắn đã được thu hồi
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        {msg.replyTo && !msg.replyTo.isUnsent && (
+                                                            <div 
+                                                                onClick={() => {
+                                                                    const target = document.getElementById(`msg-${msg.replyTo._id}`);
+                                                                    if(target) {
+                                                                        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                                        target.classList.add('bg-blue-50', 'dark:bg-blue-900/50', 'rounded-2xl', 'p-1');
+                                                                        setTimeout(() => target.classList.remove('bg-blue-50', 'dark:bg-blue-900/50', 'rounded-2xl', 'p-1'), 1500);
+                                                                    }
+                                                                }}
+                                                                className={`cursor-pointer text-[12px] mb-1 px-3 py-1.5 rounded-xl max-w-full line-clamp-1 opacity-80 hover:opacity-100 transition-opacity ${isMe ? 'bg-indigo-100 text-indigo-800 self-end' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 self-start'}`}
+                                                            >
+                                                                ↩ {msg.replyTo.text || "Đã trả lời đính kèm"}
+                                                            </div>
+                                                        )}
+                                                        
+                                                        {/* NỘI DUNG CHÍNH CỦA TIN NHẮN */}
+                                                        {msg.imageUrl && <img src={msg.imageUrl} className={`max-w-full h-auto max-h-56 object-cover rounded-2xl shadow-sm ${isMe ? 'ml-auto' : 'mr-auto'}`} />}
+                                                        {msg.videoUrl && <video src={msg.videoUrl} controls className={`max-w-full h-auto max-h-56 rounded-2xl shadow-sm bg-black ${isMe ? 'ml-auto' : 'mr-auto'}`} />}
+                                                        {msg.fileUrl && <a href={msg.fileUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 p-3 rounded-2xl transition-all text-sm font-medium shadow-sm w-fit ${isMe ? 'bg-indigo-50 text-indigo-700 ml-auto' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 mr-auto'}`}>📎 <span className="truncate max-w-[150px]">{msg.fileName}</span></a>}
+                                                        {msg.text && <div className={`py-2 px-4 rounded-[22px] text-[15px] shadow-sm w-fit max-w-full break-words whitespace-pre-wrap ${isMe ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-sm ml-auto' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-600 rounded-tl-sm mr-auto'}`}>{msg.text}</div>}
+                                                        {msg.reactions && msg.reactions.length > 0 && <div className={`absolute -bottom-3 ${isMe ? 'right-2' : 'left-2'} bg-white border border-slate-100 shadow-md rounded-full px-2 py-0.5 text-xs flex gap-1 z-10`}>{msg.reactions.map((r, i) => <span key={i}>{r.emoji}</span>)}</div>}
+                                                        <div className={`absolute top-[100%] mt-2 flex items-center gap-1.5 transition-all duration-200 bg-white border border-slate-200 shadow-lg rounded-full px-3 py-1.5 z-30 ${activeMenuId === msg._id ? 'opacity-100 visible translate-y-0' : 'opacity-0 invisible -translate-y-2'} ${isMe ? 'right-0' : 'left-0'}`}>
+                                                            <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">↩️</button>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleReact(msg._id, '❤️'); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">❤️</button>
+                                                            <button onClick={(e) => { e.stopPropagation(); handleReact(msg._id, '😂'); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">😂</button>
+                                                            {isMe && <button onClick={(e) => { e.stopPropagation(); handleUnsend(msg._id); setActiveMenuId(null); }} className="hover:bg-red-50 p-1.5 rounded-full text-sm text-red-500">🗑️</button>}
+                                                        </div>
+                                                    </>
+                                                )}
                                             </div>
-
-                                            {!isMe && (
-                                                <div className="relative">
-                                                    <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }} className="text-slate-300 hover:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"><i className="ri-more-2-fill text-lg"></i></button>
-                                                    {activeMenuId === msg._id && (
-                                                        <div onClick={(e) => e.stopPropagation()} className="absolute left-full ml-2 top-0 flex bg-white border border-slate-200 shadow-lg rounded-full px-2 py-1 z-30"><button onClick={() => { setReplyingTo(msg); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">↩️</button><button onClick={() => { handleReact(msg._id, '❤️'); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">❤️</button><button onClick={() => { handleReact(msg._id, '😂'); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">😂</button></div>
-                                                    )}
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 );

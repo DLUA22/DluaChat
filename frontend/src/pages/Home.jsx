@@ -238,7 +238,9 @@ export default function Home() {
 
         const handleReceiveMessage = (data) => {
             if (data.text && data.type === 'text') data.text = decryptText(data.text);
-            if (data.replyTo && data.replyTo.text) data.replyTo.text = decryptText(data.replyTo.text);
+            if (data.replyTo && data.replyTo.text && data.replyTo.text.startsWith("U2FsdGVk")) {
+                data.replyTo.text = decryptText(data.replyTo.text);
+            }
             const isGroupMsg = data.groupId !== null && data.groupId !== undefined;
             const incomingChatId = isGroupMsg ? String(data.groupId) : String(getSenderId(data.senderId));
             const currentOpenId = currentChatRef.current ? String(currentChatRef.current._id) : null;
@@ -248,8 +250,6 @@ export default function Home() {
                     if (prev.find(m => String(m._id) === String(data._id))) return prev;
                     return [...prev, data];
                 });
-                
-                // Cập nhật "đã xem" realtime theo chuẩn mới (Kể cả nhóm)
                 axios.post('https://dlua-chat-api.onrender.com/api/messages/mark-read', { 
                     chatId: incomingChatId, 
                     userId: user.id, 
@@ -420,7 +420,7 @@ export default function Home() {
                 let decryptedText = msg.text;
                 if (msg.text && msg.type === 'text') decryptedText = decryptText(msg.text);
                 let decryptedReplyTo = msg.replyTo;
-                if (msg.replyTo && msg.replyTo.text) {
+                if (msg.replyTo && msg.replyTo.text && msg.replyTo.text.startsWith("U2FsdGVk")) {
                     decryptedReplyTo = { ...msg.replyTo, text: decryptText(msg.replyTo.text) };
                 }
                 return { ...msg, text: decryptedText, replyTo: decryptedReplyTo };
@@ -506,10 +506,10 @@ export default function Home() {
             }
 
             let msgToDisplay = { ...res.data, senderName: user.fullName, text: newMessage }; 
-            if (msgToDisplay.replyTo && msgToDisplay.replyTo.text) {
+            if (msgToDisplay.replyTo && msgToDisplay.replyTo.text && msgToDisplay.replyTo.text.startsWith("U2FsdGVk")) {
                 msgToDisplay.replyTo = { ...msgToDisplay.replyTo, text: decryptText(msgToDisplay.replyTo.text) };
             }
-            setMessages((prev) => [...prev, msgToDisplay]); 
+            setMessages((prev) => [...prev, msgToDisplay]);
             
             setNewMessage(''); setReplyingTo(null); setShowEmoji(false); 
             setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); 
@@ -1320,11 +1320,14 @@ export default function Home() {
                                             </div>
 
                                             {!isMe && !msg.isUnsent && (
-                                                <div className="relative">
-                                                    <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }} className="text-slate-300 hover:text-slate-600 dark:hover:text-slate-200 transition-all p-2 rounded-full md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 active:bg-slate-100 dark:active:bg-slate-700 w-8 h-8 flex items-center justify-center">
-                                                        <i className="ri-more-2-fill text-xl"></i>
-                                                    </button>
-                                                </div>
+                                            <div className="relative">
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }} 
+                                                    className="text-slate-300 hover:text-slate-600 dark:hover:text-slate-200 transition-all p-2 rounded-full opacity-100 md:opacity-0 group-hover:opacity-100 focus:opacity-100 active:bg-slate-100 dark:active:bg-slate-700 w-8 h-8 flex items-center justify-center"
+                                                >
+                                                    <i className="ri-more-2-fill text-xl"></i>
+                                                </button>
+                                            </div>
                                             )}
                                         </div>
                                     </div>

@@ -1,6 +1,7 @@
 const Message = require('../models/Message');
 const Group = require('../models/Group');
-// 1. Lấy lịch sử tin nhắn
+const mongoose = require('mongoose');
+
 exports.getMessages = async (req, res) => {
     try {
         const { senderId, receiverId } = req.params;
@@ -38,24 +39,27 @@ exports.sendMessage = async (req, res) => {
 exports.markAsRead = async (req, res) => {
     try {
         const { chatId, userId, isGroup } = req.body; 
+        const userObjId = new mongoose.Types.ObjectId(userId);
+        const chatObjId = new mongoose.Types.ObjectId(chatId);
+
         let query = {};
 
         if (isGroup) {
             query = { 
-                groupId: chatId, 
-                senderId: { $ne: userId }, 
-                readBy: { $not: { $elemMatch: { userId: userId } } } 
+                groupId: chatObjId, 
+                senderId: { $ne: userObjId }, 
+                readBy: { $not: { $elemMatch: { userId: userObjId } } } 
             };
         } else {
             query = { 
-                senderId: chatId, 
-                receiverId: userId, 
-                readBy: { $not: { $elemMatch: { userId: userId } } } 
+                senderId: chatObjId, 
+                receiverId: userObjId, 
+                readBy: { $not: { $elemMatch: { userId: userObjId } } } 
             };
         }
-
         await Message.updateMany(query, {
-            $push: { readBy: { userId: userId, readAt: new Date() } }
+            $push: { readBy: { userId: userObjId, readAt: new Date() } },
+            $set: { isRead: true } 
         });
 
         res.status(200).json({ message: 'Đã cập nhật trạng thái xem' });
@@ -106,16 +110,16 @@ exports.reactMessage = async (req, res) => {
 exports.getUnreadCounts = async (req, res) => {
     try {
         const { userId } = req.params;
-        const userGroups = await Group.find({ members: userId }).select('_id');
+        const userObjId = new mongoose.Types.ObjectId(userId);
+        const userGroups = await Group.find({ members: userObjId }).select('_id');
         const groupIds = userGroups.map(g => g._id);
-
         const unreadMessages = await Message.find({ 
-            senderId: { $ne: userId },
+            senderId: { $ne: userObjId },
             $or: [
-                { receiverId: userId },         
+                { receiverId: userObjId },         
                 { groupId: { $in: groupIds } }  
             ],
-            readBy: { $not: { $elemMatch: { userId: userId } } },
+            readBy: { $not: { $elemMatch: { userId: userObjId } } },
             isRead: { $ne: true } 
         });
 

@@ -1,5 +1,5 @@
 const Message = require('../models/Message');
-
+const Group = require('../models/Group');
 // 1. Lấy lịch sử tin nhắn
 exports.getMessages = async (req, res) => {
     try {
@@ -37,13 +37,28 @@ exports.sendMessage = async (req, res) => {
 
 exports.markAsRead = async (req, res) => {
     try {
-        const { senderId, receiverId } = req.body;
-        await Message.updateMany(
-            { senderId: senderId, receiverId: receiverId, isRead: false },
-            { $set: { isRead: true, readAt: new Date() } }
-        );
+        const { chatId, userId, isGroup } = req.body; 
+        let query = {};
+        if (isGroup) {
+            query = { 
+                groupId: chatId, 
+                senderId: { $ne: userId }, 
+                'readBy.userId': { $ne: userId } 
+            };
+        } else {
+            query = { 
+                senderId: chatId, 
+                receiverId: userId, 
+                'readBy.userId': { $ne: userId } 
+            };
+        }
+        await Message.updateMany(query, {
+            $push: { readBy: { userId: userId, readAt: new Date() } }
+        });
+
         res.status(200).json({ message: 'Đã cập nhật trạng thái xem' });
     } catch (error) {
+        console.error("Lỗi cập nhật đã xem:", error);
         res.status(500).json({ message: 'Lỗi cập nhật đã xem' });
     }
 };
@@ -89,18 +104,25 @@ exports.reactMessage = async (req, res) => {
 exports.getUnreadCounts = async (req, res) => {
     try {
         const { userId } = req.params;
+        const userGroups = await Group.find({ members: userId }).select('_id');
+        const groupIds = userGroups.map(g => g._id);
         const unreadMessages = await Message.find({ 
-            receiverId: userId, 
-            isRead: false 
+            senderId: { $ne: userId },
+            $or: [
+                { receiverId: userId },
+                { groupId: { $in: groupIds } }
+            ],
+            'readBy.userId': { $ne: userId }
         });
         const counts = {};
         unreadMessages.forEach(msg => {
             const senderKey = msg.groupId ? msg.groupId.toString() : msg.senderId.toString();
             counts[senderKey] = (counts[senderKey] || 0) + 1;
         });
+
         res.status(200).json(counts);
     } catch (error) {
-        console.error("Lỗi getUnreadCounts:", error);
+        console.error("Lỗi đếm tin nhắn chưa đọc:", error);
         res.status(500).json({ message: 'Lỗi lấy số lượng tin nhắn chưa đọc' });
     }
 };

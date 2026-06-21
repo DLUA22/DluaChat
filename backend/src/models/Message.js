@@ -19,8 +19,12 @@ const messageSchema = new mongoose.Schema({
     isMissedCall: { type: Boolean, default: false },
 
     // TRẠNG THÁI ĐÃ XEM
-    isRead: { type: Boolean, default: false },
-    readAt: { type: Date, default: null },
+    readBy: [
+    {
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        readAt: { type: Date, default: Date.now }
+    }
+    ],
 
     replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Message', default: null },
     reactions: [{ userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, emoji: { type: String } }],

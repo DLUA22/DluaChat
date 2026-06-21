@@ -91,10 +91,9 @@ export default function Home() {
     const [currentChat, setCurrentChat] = useState(null);
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
-    const [unreadCounts, setUnreadCounts] = useState(() => {
-        const saved = localStorage.getItem('dlua_unread');
-        return saved ? JSON.parse(saved) : {};
-    });
+    
+    // ĐÃ SỬA: Không dùng localStorage nữa, khởi tạo mảng rỗng để lấy từ DB
+    const [unreadCounts, setUnreadCounts] = useState({});
 
     // 3. STATES: Chat & Menu Tools
     const [replyingTo, setReplyingTo] = useState(null);
@@ -140,7 +139,6 @@ export default function Home() {
     const pendingCandidates = useRef([]);
     const streamRef = useRef(null);
 
-    // Tối ưu: Dùng useRef để giữ giá trị currentChat mới nhất cho Socket (Tránh re-render toàn bộ useEffect)
     const currentChatRef = useRef(currentChat);
     useEffect(() => { currentChatRef.current = currentChat; }, [currentChat]);
 
@@ -148,7 +146,6 @@ export default function Home() {
     // EFFECTS
     // ==========================================
 
-    // Init & Auth
     useEffect(() => {
         const loggedInUser = localStorage.getItem('user') || sessionStorage.getItem('user');
         
@@ -164,7 +161,7 @@ export default function Home() {
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [navigate]);
-    // Push Notifications Setup
+
     useEffect(() => {
         const setupPushNotifications = async () => {
             if ('serviceWorker' in navigator && 'PushManager' in window && user) {
@@ -192,8 +189,8 @@ export default function Home() {
         setupPushNotifications();
     }, [user]);
 
-    // Unread Counts & Theme Sync
-    useEffect(() => { localStorage.setItem('dlua_unread', JSON.stringify(unreadCounts)); }, [unreadCounts]);
+    // ĐÃ XÓA useEffect LƯU localStorage CHO UNREAD COUNTS ĐỂ TRÁNH LỖI
+
     useEffect(() => {
         if (isDarkMode) {
             document.documentElement.classList.add('dark');
@@ -204,7 +201,6 @@ export default function Home() {
         }
     }, [isDarkMode]);
 
-    // PWA Install Prompt
     useEffect(() => {
         const handleBeforeInstallPrompt = (e) => {
             e.preventDefault();
@@ -219,7 +215,6 @@ export default function Home() {
         return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     }, []);
 
-    // Call Ringtone Logic
     useEffect(() => {
         if (callStatus === 'ringing' || callStatus === 'calling') {
             if (!ringtoneRef.current) {
@@ -238,9 +233,8 @@ export default function Home() {
         if (callStatus === 'active' && !callStartTime) setCallStartTime(Date.now());
     }, [callStatus, callStartTime]);
 
-    // Socket Listeners
     useEffect(() => {
-        if (!user) return; // Đợi load user xong mới kích hoạt
+        if (!user) return;
 
         const handleReceiveMessage = (data) => {
             if (data.text && data.type === 'text') data.text = decryptText(data.text);
@@ -253,10 +247,15 @@ export default function Home() {
                     if (prev.find(m => String(m._id) === String(data._id))) return prev;
                     return [...prev, data];
                 });
-                if (!isGroupMsg) {
-                    socket.emit('mark_read', { senderId: incomingChatId, receiverId: user.id, readAt: new Date() });
-                    axios.post('https://dlua-chat-api.onrender.com/api/messages/mark-read', { senderId: incomingChatId, receiverId: user.id });
-                }
+                
+                // Cập nhật "đã xem" realtime theo chuẩn mới (Kể cả nhóm)
+                axios.post('https://dlua-chat-api.onrender.com/api/messages/mark-read', { 
+                    chatId: incomingChatId, 
+                    userId: user.id, 
+                    isGroup: isGroupMsg 
+                });
+                socket.emit('mark_read', { senderId: incomingChatId, receiverId: user.id, readAt: new Date(), isGroup: isGroupMsg });
+                
                 setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
             } else {
                 setUnreadCounts((prev) => ({ ...prev, [incomingChatId]: (prev[incomingChatId] || 0) + 1 }));
@@ -274,8 +273,14 @@ export default function Home() {
         
         const handleMessagesRead = (data) => {
             const current = currentChatRef.current;
-            if (current && current._id === data.receiverId && !current.isGroup) {
-                setMessages((prev) => prev.map(m => (!m.isRead && getSenderId(m.senderId) === user.id) ? { ...m, isRead: true, readAt: data.readAt } : m));
+            // Sửa lại đoạn này để tương thích logic mảng readBy
+            if (current && (current._id === data.receiverId || current._id === data.groupId)) {
+                setMessages((prev) => prev.map(m => {
+                    if (getSenderId(m.senderId) === user.id) {
+                        return { ...m, readBy: [...(m.readBy || []), { userId: data.receiverId, readAt: data.readAt }] };
+                    }
+                    return m;
+                }));
             }
         };
 
@@ -313,9 +318,7 @@ export default function Home() {
             });
         });
 
-        // WebRTC Sockets
         socket.on('call_incoming', (data) => { setCallData(data); setCallStatus('ringing'); });
-        
         socket.on('call_accepted', async (answer) => { 
             setCallStatus('active'); 
             if (peerRef.current) {
@@ -326,7 +329,6 @@ export default function Home() {
                 pendingCandidates.current = [];
             }
         });
-
         socket.on('ice_candidate', async (candidate) => { 
             try { 
                 if (peerRef.current && peerRef.current.remoteDescription) { 
@@ -336,7 +338,6 @@ export default function Home() {
                 }
             } catch (e) { console.error("Lỗi ICE:", e); } 
         });
-
         socket.on('call_ended', () => endCallLocally());
         socket.on('force_logout', () => {
             toast.error('Tài khoản của bạn vừa đăng nhập ở một nơi khác!', { duration: 5000, icon: '⚠️' });
@@ -357,7 +358,6 @@ export default function Home() {
         if (remoteVideoRef.current && remoteStream) remoteVideoRef.current.srcObject = remoteStream;
     }, [localStream, remoteStream, callStatus]);
 
-    // Data Fetching Effects
     useEffect(() => { 
         if (currentChat) { 
             setPage(1); setHasMore(true); fetchMessages(1); 
@@ -378,13 +378,12 @@ export default function Home() {
         fetchGroups(userId); 
         fetchUnreadCounts(userId);
     };
+
     const fetchUnreadCounts = async (userId) => {
         try {
             const res = await axios.get(`https://dlua-chat-api.onrender.com/api/messages/unread-counts/${userId}`);
             setUnreadCounts(res.data); 
-        } catch (err) {
-            console.error("Lỗi đồng bộ chấm đỏ:", err);
-        }
+        } catch (err) { console.error("Lỗi đồng bộ chấm đỏ:", err); }
     };
     
     const fetchFriends = async (userId) => { 
@@ -415,6 +414,7 @@ export default function Home() {
             const chat = currentChatRef.current;
             const isGroupFlag = chat.isGroup ? 'true' : 'false';
             const res = await axios.get(`https://dlua-chat-api.onrender.com/api/messages/${user.id}/${chat._id}?page=${pageNum}&limit=20&isGroup=${isGroupFlag}`);
+            
             const fetchedMessages = res.data.map(msg => {
                 if (msg.text && msg.type === 'text') return { ...msg, text: decryptText(msg.text) };
                 return msg;
@@ -422,12 +422,29 @@ export default function Home() {
 
             if (pageNum === 1) {
                 setMessages(fetchedMessages);
-                const hasUnread = fetchedMessages.some(m => getSenderId(m.senderId) !== user.id && !m.isRead);
-                if (hasUnread && !chat.isGroup) {
-                    await axios.post('https://dlua-chat-api.onrender.com/api/messages/mark-read', { senderId: chat._id, receiverId: user.id });
+                
+                // ĐÃ SỬA CHUẨN: Lấy tin nhắn do người khác gửi mà mình CHƯA có tên trong mảng readBy
+                const hasUnread = fetchedMessages.some(m => {
+                    if (getSenderId(m.senderId) === user.id) return false;
+                    if (m.readBy) return !m.readBy.some(r => r.userId === user.id);
+                    return !m.isRead; // Phòng trường hợp tin nhắn cũ còn sót lại
+                });
+
+                if (hasUnread) {
+                    await axios.post('https://dlua-chat-api.onrender.com/api/messages/mark-read', { 
+                        chatId: chat._id, 
+                        userId: user.id, 
+                        isGroup: chat.isGroup 
+                    });
+                    
                     setTimeout(() => {
                         if (socket.connected) {
-                            socket.emit('mark_read', { senderId: chat._id, receiverId: user.id, readAt: new Date().toISOString() });
+                            socket.emit('mark_read', { 
+                                senderId: chat._id, 
+                                receiverId: user.id, 
+                                readAt: new Date().toISOString(),
+                                isGroup: chat.isGroup
+                            });
                         }
                     }, 500);
                 }
@@ -455,7 +472,6 @@ export default function Home() {
         setDeferredPrompt(null);
     };
 
-    // Chat Actions
     const handleSendMessage = async (e) => { 
         e.preventDefault(); 
         if (!newMessage.trim()) return; 
@@ -566,7 +582,6 @@ export default function Home() {
         } catch (err) { console.error("Lỗi react", err); } 
     };
 
-    // User / Auth Handlers
     const handleLogout = () => {
         toast((t) => (
             <div className="flex flex-col gap-3 min-w-[250px] p-2">
@@ -582,7 +597,6 @@ export default function Home() {
                     <button 
                         onClick={() => {
                             toast.dismiss(t.id);
-                            // SỬA TẠI ĐÂY: Xóa sạch cả 2 kho để tránh lỗi kẹt giao diện sáng/tối hoặc token cũ
                             localStorage.clear();
                             sessionStorage.clear();
                             navigate('/login', { replace: true });
@@ -651,7 +665,7 @@ export default function Home() {
         ), { id: 'unfriend-modal', duration: Infinity, position: 'top-center' }); 
     };
 
-const handleSaveAvatar = async () => { 
+    const handleSaveAvatar = async () => { 
         if (editorRef.current) { 
             const canvas = editorRef.current.getImageScaledToCanvas(); 
             canvas.toBlob(async (blob) => { 
@@ -685,7 +699,6 @@ const handleSaveAvatar = async () => {
         } catch (err) { toast.error(err.response?.data?.message || "Lỗi đổi mật khẩu"); } 
     };
 
-    // Group Handlers
     const handleCreateGroup = async (e) => {
         e.preventDefault();
         if (!newGroupName.trim() || selectedMembers.length === 0) return toast.error("Nhập tên và chọn ít nhất 1 bạn!");
@@ -928,8 +941,12 @@ const handleSaveAvatar = async () => {
     if (!user) return null;
     const combinedChatList = [...friends, ...groups].filter(f => f.fullName.toLowerCase().includes(localChatSearch.toLowerCase()));
     const lastMessage = messages[messages.length - 1];
+    
+    // ĐÃ SỬA CHUẨN: Lấy điều kiện Đã xem mới bằng mảng readBy
+    const isLastMessageRead = lastMessage && getSenderId(lastMessage.senderId) === user.id && (
+        (lastMessage.readBy && lastMessage.readBy.length > 0) || lastMessage.isRead
+    );
 
-    // LƯU Ý MẢNG JSX: Cấu trúc HTML/Tailwind của bạn được giữ nguyên
     return (
         <motion.div onClick={() => setActiveMenuId(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-[100dvh] bg-[#f0f4f8] dark:bg-slate-900 p-0 md:p-6 md:gap-6 font-['Be_Vietnam_Pro'] relative transition-colors duration-300 overflow-hidden">
             <Toaster position="top-center" />
@@ -1296,7 +1313,7 @@ const handleSaveAvatar = async () => {
                                 </div>
                             )}
 
-                            {lastMessage && getSenderId(lastMessage.senderId) === user.id && lastMessage.isRead && !currentChat.isGroup && (
+                            {isLastMessageRead && !currentChat.isGroup && (
                                 <div className="flex justify-end mt-1 pr-2 mb-2">
                                     <div className="flex items-center gap-1.5 opacity-70">
                                         <div className="w-3 h-3 rounded-full overflow-hidden border border-slate-200">

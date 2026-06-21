@@ -238,9 +238,7 @@ export default function Home() {
 
         const handleReceiveMessage = (data) => {
             if (data.text && data.type === 'text') data.text = decryptText(data.text);
-            if (data.replyTo && data.replyTo.text && data.replyTo.type === 'text') {
-                data.replyTo.text = decryptText(data.replyTo.text);
-            }
+            if (data.replyTo && data.replyTo.text) data.replyTo.text = decryptText(data.replyTo.text);
             const isGroupMsg = data.groupId !== null && data.groupId !== undefined;
             const incomingChatId = isGroupMsg ? String(data.groupId) : String(getSenderId(data.senderId));
             const currentOpenId = currentChatRef.current ? String(currentChatRef.current._id) : null;
@@ -507,7 +505,10 @@ export default function Home() {
                 socket.emit('send_message', socketData); 
             }
 
-            const msgToDisplay = { ...res.data, senderName: user.fullName, text: newMessage }; 
+            let msgToDisplay = { ...res.data, senderName: user.fullName, text: newMessage }; 
+            if (msgToDisplay.replyTo && msgToDisplay.replyTo.text) {
+                msgToDisplay.replyTo = { ...msgToDisplay.replyTo, text: decryptText(msgToDisplay.replyTo.text) };
+            }
             setMessages((prev) => [...prev, msgToDisplay]); 
             
             setNewMessage(''); setReplyingTo(null); setShowEmoji(false); 

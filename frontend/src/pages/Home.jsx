@@ -420,7 +420,7 @@ export default function Home() {
                 let decryptedText = msg.text;
                 if (msg.text && msg.type === 'text') decryptedText = decryptText(msg.text);
                 let decryptedReplyTo = msg.replyTo;
-                if (msg.replyTo && msg.replyTo.text && msg.replyTo.type === 'text') {
+                if (msg.replyTo && msg.replyTo.text) {
                     decryptedReplyTo = { ...msg.replyTo, text: decryptText(msg.replyTo.text) };
                 }
                 return { ...msg, text: decryptedText, replyTo: decryptedReplyTo };
@@ -1304,8 +1304,6 @@ export default function Home() {
                                                                 ↩ {msg.replyTo.text || "Đã trả lời đính kèm"}
                                                             </div>
                                                         )}
-                                                        
-                                                        {/* NỘI DUNG CHÍNH CỦA TIN NHẮN */}
                                                         {msg.imageUrl && <img src={msg.imageUrl} className={`max-w-full h-auto max-h-56 object-cover rounded-2xl shadow-sm ${isMe ? 'ml-auto' : 'mr-auto'}`} />}
                                                         {msg.videoUrl && <video src={msg.videoUrl} controls className={`max-w-full h-auto max-h-56 rounded-2xl shadow-sm bg-black ${isMe ? 'ml-auto' : 'mr-auto'}`} />}
                                                         {msg.fileUrl && <a href={msg.fileUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 p-3 rounded-2xl transition-all text-sm font-medium shadow-sm w-fit ${isMe ? 'bg-indigo-50 text-indigo-700 ml-auto' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 mr-auto'}`}>📎 <span className="truncate max-w-[150px]">{msg.fileName}</span></a>}
@@ -1320,6 +1318,14 @@ export default function Home() {
                                                     </>
                                                 )}
                                             </div>
+
+                                            {!isMe && !msg.isUnsent && (
+                                                <div className="relative">
+                                                    <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }} className="text-slate-300 hover:text-slate-600 dark:hover:text-slate-200 transition-all p-2 rounded-full md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 active:bg-slate-100 dark:active:bg-slate-700 w-8 h-8 flex items-center justify-center">
+                                                        <i className="ri-more-2-fill text-xl"></i>
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 );

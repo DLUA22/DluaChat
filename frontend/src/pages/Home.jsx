@@ -372,7 +372,20 @@ export default function Home() {
     // ==========================================
     // API CALLS & HANDLERS
     // ==========================================
-    const fetchInitialData = (userId) => { fetchPendingRequests(userId); fetchFriends(userId); fetchGroups(userId); };
+    const fetchInitialData = (userId) => { 
+        fetchPendingRequests(userId); 
+        fetchFriends(userId); 
+        fetchGroups(userId); 
+        fetchUnreadCounts(userId);
+    };
+    const fetchUnreadCounts = async (userId) => {
+        try {
+            const res = await axios.get(`https://dlua-chat-api.onrender.com/api/messages/unread-counts/${userId}`);
+            setUnreadCounts(res.data); 
+        } catch (err) {
+            console.error("Lỗi đồng bộ chấm đỏ:", err);
+        }
+    };
     
     const fetchFriends = async (userId) => { 
         try { const res = await axios.get(`https://dlua-chat-api.onrender.com/api/auth/friends/${userId}`); setFriends(res.data); } 
@@ -587,6 +600,7 @@ export default function Home() {
                 </div>
             </div>
         ), { 
+            id: 'logout-modal',
             duration: Infinity,
             position: 'top-center' 
         });
@@ -634,7 +648,7 @@ export default function Home() {
                     <button onClick={() => toast.dismiss(t.id)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-1.5 rounded-lg text-xs font-bold transition-colors">Hủy bỏ</button>
                 </div>
             </div> 
-        ), { duration: Infinity, position: 'top-center' }); 
+        ), { id: 'unfriend-modal', duration: Infinity, position: 'top-center' }); 
     };
 
 const handleSaveAvatar = async () => { 
@@ -713,7 +727,7 @@ const handleSaveAvatar = async () => {
                     <button onClick={() => toast.dismiss(t.id)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-1.5 rounded-lg text-xs font-bold transition-colors">Hủy</button>
                 </div>
             </div>
-        ), { duration: Infinity, position: 'top-center' });
+        ), { id: 'leave-group-modal', duration: Infinity, position: 'top-center' });
     };
 
     // ==========================================

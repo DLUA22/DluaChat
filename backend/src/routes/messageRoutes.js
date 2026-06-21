@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { getMessages, sendMessage, unsendMessage, reactMessage, markAsRead } = require('../controllers/messageController');
-
+// THÊM getUnreadCounts VÀO ĐÂY
+const { getMessages, sendMessage, unsendMessage, reactMessage, markAsRead, getUnreadCounts } = require('../controllers/messageController');
 const uploadCloud = require('../config/cloudinary');
 
 router.post('/upload', uploadCloud.single('file'), (req, res) => {
@@ -20,6 +20,7 @@ router.post('/upload', uploadCloud.single('file'), (req, res) => {
         res.status(500).json({ message: 'Lỗi upload file' });
     }
 });
+router.get('/unread-counts/:userId', getUnreadCounts);
 
 router.get('/:senderId/:receiverId', getMessages);
 router.post('/send', sendMessage);

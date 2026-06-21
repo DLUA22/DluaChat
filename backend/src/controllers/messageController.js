@@ -86,3 +86,21 @@ exports.reactMessage = async (req, res) => {
         res.status(500).json({ message: 'Lỗi thả cảm xúc' });
     }
 };
+exports.getUnreadCounts = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const unreadMessages = await Message.find({ 
+            receiverId: userId, 
+            isRead: false 
+        });
+        const counts = {};
+        unreadMessages.forEach(msg => {
+            const senderKey = msg.groupId ? msg.groupId.toString() : msg.senderId.toString();
+            counts[senderKey] = (counts[senderKey] || 0) + 1;
+        });
+        res.status(200).json(counts);
+    } catch (error) {
+        console.error("Lỗi getUnreadCounts:", error);
+        res.status(500).json({ message: 'Lỗi lấy số lượng tin nhắn chưa đọc' });
+    }
+};

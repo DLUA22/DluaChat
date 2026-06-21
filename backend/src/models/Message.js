@@ -28,7 +28,8 @@ const messageSchema = new mongoose.Schema({
 
     replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Message', default: null },
     reactions: [{ userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, emoji: { type: String } }],
-    isUnsent: { type: Boolean, default: false }
+    isUnsent: { type: Boolean, default: false },
+    isRead: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Message', messageSchema);

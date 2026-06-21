@@ -39,19 +39,21 @@ exports.markAsRead = async (req, res) => {
     try {
         const { chatId, userId, isGroup } = req.body; 
         let query = {};
+
         if (isGroup) {
             query = { 
                 groupId: chatId, 
                 senderId: { $ne: userId }, 
-                'readBy.userId': { $ne: userId } 
+                readBy: { $not: { $elemMatch: { userId: userId } } } 
             };
         } else {
             query = { 
                 senderId: chatId, 
                 receiverId: userId, 
-                'readBy.userId': { $ne: userId } 
+                readBy: { $not: { $elemMatch: { userId: userId } } } 
             };
         }
+
         await Message.updateMany(query, {
             $push: { readBy: { userId: userId, readAt: new Date() } }
         });
@@ -106,15 +108,17 @@ exports.getUnreadCounts = async (req, res) => {
         const { userId } = req.params;
         const userGroups = await Group.find({ members: userId }).select('_id');
         const groupIds = userGroups.map(g => g._id);
+
         const unreadMessages = await Message.find({ 
             senderId: { $ne: userId },
             $or: [
-                { receiverId: userId },
-                { groupId: { $in: groupIds } }
+                { receiverId: userId },         
+                { groupId: { $in: groupIds } }  
             ],
-            'readBy.userId': { $ne: userId },
-            isRead: { $ne: true }
+            readBy: { $not: { $elemMatch: { userId: userId } } },
+            isRead: { $ne: true } 
         });
+
         const counts = {};
         unreadMessages.forEach(msg => {
             const senderKey = msg.groupId ? msg.groupId.toString() : msg.senderId.toString();

@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-// THÊM getUnreadCounts VÀO ĐÂY
 const { migrateDatabase, getMessages, sendMessage, unsendMessage, reactMessage, markAsRead, getUnreadCounts } = require('../controllers/messageController');
 const uploadCloud = require('../config/cloudinary');
+const { verifyToken } = require('../middleware/authMiddleware');
 
-router.post('/upload', uploadCloud.single('file'), (req, res) => {
+router.post('/upload', verifyToken, uploadCloud.single('file'), (req, res) => {
     try {
         if (!req.file) {
             console.log("❌ LỖI: Server không nhận được file từ Frontend!");
@@ -21,12 +21,10 @@ router.post('/upload', uploadCloud.single('file'), (req, res) => {
     }
 });
 router.get('/sys-admin/migrate-db', migrateDatabase);
-router.get('/unread-counts/:userId', getUnreadCounts);
-
-router.get('/:senderId/:receiverId', getMessages);
-router.post('/send', sendMessage);
-router.post('/mark-read', markAsRead);
-router.put('/unsend/:messageId', unsendMessage);
-router.put('/react/:messageId', reactMessage);
-
+router.get('/unread-counts/:userId', verifyToken, getUnreadCounts);
+router.get('/:senderId/:receiverId', verifyToken, getMessages);
+router.post('/send', verifyToken, sendMessage);
+router.post('/mark-read', verifyToken, markAsRead);
+router.put('/unsend/:messageId', verifyToken, unsendMessage);
+router.put('/react/:messageId', verifyToken, reactMessage);
 module.exports = router;

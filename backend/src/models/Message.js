@@ -32,6 +32,8 @@ const messageSchema = new mongoose.Schema({
     isRead: { type: Boolean, default: false }
 }, { timestamps: true });
 
+messageSchema.index({ receiverId: 1, 'readBy.userId': 1 });
+messageSchema.index({ groupId: 1, 'readBy.userId': 1 });
+messageSchema.index({ senderId: 1, receiverId: 1, createdAt: -1 });
+messageSchema.index({ groupId: 1, createdAt: -1 });
 module.exports = mongoose.model('Message', messageSchema);
-messageSchema.index({ senderId: 1, receiverId: 1 });
-messageSchema.index({ groupId: 1 });

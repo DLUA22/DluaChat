@@ -12,7 +12,6 @@ const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: {
         folder: 'dlua_chat_avatars',
-        allowed_formats: ['jpg', 'png', 'jpeg', 'webm', 'mp4'],
         resource_type: 'auto'
     }
 });

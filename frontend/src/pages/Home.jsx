@@ -104,6 +104,7 @@ export default function Home() {
     const [hasMore, setHasMore] = useState(true);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [typingUsers, setTypingUsers] = useState({});
+    const [viewingMedia, setViewingMedia] = useState(null);
 
     // 4. STATES: WebRTC & Call
     const [callStatus, setCallStatus] = useState('idle'); 
@@ -541,6 +542,10 @@ export default function Home() {
             
             const msgRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); 
             const msgToSend = { ...msgRes.data, senderName: user.fullName }; 
+
+            if (msgToSend.replyTo && msgToSend.replyTo.text && msgToSend.replyTo.text.startsWith("U2FsdGVk")) {
+                msgToSend.replyTo = { ...msgToSend.replyTo, text: decryptText(msgToSend.replyTo.text) };
+            }
             
             setMessages((prev) => [...prev, msgToSend]); 
             
@@ -956,7 +961,49 @@ export default function Home() {
     return (
         <motion.div onClick={() => setActiveMenuId(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-[100dvh] bg-[#f0f4f8] dark:bg-slate-900 p-0 md:p-6 md:gap-6 font-['Be_Vietnam_Pro'] relative transition-colors duration-300 overflow-hidden">
             <Toaster position="top-center" />
-            
+            {/* LỚP PHỦ XEM ẢNH/VIDEO PHÓNG TO VÀ TẢI XUỐNG */}
+            {viewingMedia && (
+                <div className="fixed inset-0 bg-black/95 z-[99999] flex flex-col items-center justify-center p-4 md:p-8 backdrop-blur-sm">
+                    <div className="absolute top-6 right-6 flex gap-4 z-10">
+                        <button 
+                            onClick={async () => {
+                                // Logic ép tải xuống thay vì mở tab mới
+                                try {
+                                    const response = await fetch(viewingMedia.url);
+                                    const blob = await response.blob();
+                                    const blobUrl = window.URL.createObjectURL(blob);
+                                    const link = document.createElement('a');
+                                    link.href = blobUrl;
+                                    link.download = viewingMedia.name || 'dlua-media';
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                    window.URL.revokeObjectURL(blobUrl);
+                                } catch (error) {
+                                    window.open(viewingMedia.url, '_blank');
+                                }
+                            }} 
+                            className="text-white bg-white/20 hover:bg-white/40 p-3 rounded-full transition-all flex items-center justify-center w-12 h-12"
+                            title="Tải xuống"
+                        >
+                            <i className="ri-download-2-fill text-2xl"></i>
+                        </button>
+                        <button 
+                            onClick={() => setViewingMedia(null)} 
+                            className="text-white bg-white/20 hover:bg-red-500 p-3 rounded-full transition-all flex items-center justify-center w-12 h-12"
+                            title="Đóng"
+                        >
+                            <i className="ri-close-line text-3xl"></i>
+                        </button>
+                    </div>
+                    
+                    {viewingMedia.type === 'image' ? (
+                        <img src={viewingMedia.url} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-fade-in" />
+                    ) : (
+                        <video src={viewingMedia.url} controls autoPlay className="max-w-full max-h-full rounded-lg shadow-2xl animate-fade-in" />
+                    )}
+                </div>
+            )}
             {/* LỚP PHỦ CUỘC GỌI */}
             {callStatus !== 'idle' && (
                 <div className="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center backdrop-blur-md overflow-hidden touch-none">
@@ -1307,8 +1354,8 @@ export default function Home() {
                                                                 </div>
                                                             </div>
                                                         )}
-                                                        {msg.imageUrl && <img src={msg.imageUrl} className={`max-w-full h-auto max-h-56 object-cover rounded-2xl shadow-sm ${isMe ? 'ml-auto' : 'mr-auto'}`} />}
-                                                        {msg.videoUrl && <video src={msg.videoUrl} controls className={`max-w-full h-auto max-h-56 rounded-2xl shadow-sm bg-black ${isMe ? 'ml-auto' : 'mr-auto'}`} />}
+                                                        {msg.imageUrl && <img onClick={() => setViewingMedia({ url: msg.imageUrl, type: 'image', name: msg.fileName || 'image.png' })} src={msg.imageUrl} className={`cursor-zoom-in hover:opacity-90 max-w-full h-auto max-h-56 object-cover rounded-2xl shadow-sm ${isMe ? 'ml-auto' : 'mr-auto'} transition-opacity`} />}
+                                                        {msg.videoUrl && <div className={`relative w-fit ${isMe ? 'ml-auto' : 'mr-auto'}`}><video src={msg.videoUrl} className="max-w-full h-auto max-h-56 rounded-2xl shadow-sm bg-black" /><button onClick={() => setViewingMedia({ url: msg.videoUrl, type: 'video', name: msg.fileName || 'video.mp4' })} className="absolute inset-0 w-full h-full flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity rounded-2xl cursor-zoom-in"><i className="ri-fullscreen-line text-white text-4xl drop-shadow-md"></i></button></div>}
                                                         {msg.fileUrl && <a href={msg.fileUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 p-3 rounded-2xl transition-all text-sm font-medium shadow-sm w-fit ${isMe ? 'bg-indigo-50 text-indigo-700 ml-auto' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 mr-auto'}`}>📎 <span className="truncate max-w-[150px]">{msg.fileName}</span></a>}
                                                         {msg.text && <div className={`py-2 px-4 rounded-[22px] text-[15px] shadow-sm w-fit max-w-full break-words whitespace-pre-wrap ${isMe ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-sm ml-auto' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-600 rounded-tl-sm mr-auto'}`}>{msg.text}</div>}
                                                         {msg.reactions && msg.reactions.length > 0 && <div className={`absolute -bottom-3 ${isMe ? 'right-2' : 'left-2'} bg-white border border-slate-100 shadow-md rounded-full px-2 py-0.5 text-xs flex gap-1 z-10`}>{msg.reactions.map((r, i) => <span key={i}>{r.emoji}</span>)}</div>}

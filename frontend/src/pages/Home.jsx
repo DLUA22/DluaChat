@@ -105,6 +105,7 @@ export default function Home() {
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [typingUsers, setTypingUsers] = useState({});
     const [viewingMedia, setViewingMedia] = useState(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     // 4. STATES: WebRTC & Call
     const [callStatus, setCallStatus] = useState('idle'); 
@@ -520,15 +521,13 @@ export default function Home() {
     const handleFileUpload = async (e, type) => { 
         const file = e.target.files[0]; 
         if (!file) return; 
-        
+        setIsUploading(true);
         const formData = new FormData(); 
         formData.append('file', file); 
-        
         try { 
             const uploadRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/upload', formData); 
             const payloadKey = type === 'image' ? 'imageUrl' : type === 'video' ? 'videoUrl' : 'fileUrl'; 
             const isGroup = currentChat.isGroup; 
-            
             const messageData = { 
                 senderId: user.id, 
                 receiverId: isGroup ? null : currentChat._id, 
@@ -539,14 +538,11 @@ export default function Home() {
                 replyTo: replyingTo ? replyingTo._id : null, 
                 type: 'text' 
             }; 
-            
             const msgRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); 
-            const msgToSend = { ...msgRes.data, senderName: user.fullName }; 
-
+            let msgToSend = { ...msgRes.data, senderName: user.fullName }; 
             if (msgToSend.replyTo && msgToSend.replyTo.text && msgToSend.replyTo.text.startsWith("U2FsdGVk")) {
                 msgToSend.replyTo = { ...msgToSend.replyTo, text: decryptText(msgToSend.replyTo.text) };
             }
-            
             setMessages((prev) => [...prev, msgToSend]); 
             
             if (isGroup) { 
@@ -556,11 +552,14 @@ export default function Home() {
             } else { 
                 socket.emit('send_message', msgToSend); 
             } 
-            
             setReplyingTo(null); 
             setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); 
-        } catch (err) { toast.error(`Lỗi gửi file`); } 
-        e.target.value = null; 
+        } catch (err) { 
+            toast.error(`Lỗi gửi file`); 
+        } finally {
+            setIsUploading(false);
+            e.target.value = null; 
+        }
     };
 
     const handleUnsend = async (messageId) => { 
@@ -1256,7 +1255,7 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* MAIN CHAT AREA */}
+            {/* MAIN CHAT AREA CHUẨN XỊN */}
             <div className={`w-full md:flex-1 bg-white dark:bg-slate-800 md:rounded-[32px] shadow-sm flex-col overflow-hidden relative transition-colors ${!currentChat ? 'hidden md:flex' : 'flex absolute inset-0 z-50 md:relative md:z-0'}`}>
                 {!currentChat ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-center px-10">
@@ -1266,6 +1265,7 @@ export default function Home() {
                     </div>
                 ) : (
                     <>
+                        {/* HEADER CHAT */}
                         <div className="h-[80px] border-b border-slate-100 dark:border-slate-700 flex items-center justify-between px-4 md:px-8 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md z-10 sticky top-0 transition-colors pt-safe">
                             <div className="flex items-center gap-3">
                                 <button onClick={() => setCurrentChat(null)} className="md:hidden w-10 h-10 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all">
@@ -1290,6 +1290,7 @@ export default function Home() {
                             </div>
                         </div>
 
+                        {/* LIST TIN NHẮN */}
                         <div ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#f8fafc] dark:bg-slate-900 space-y-4 transition-colors">
                             {isLoadingMore && <div className="flex justify-center py-2"><div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}
 
@@ -1319,7 +1320,6 @@ export default function Home() {
                                         {showTime && <span className="text-[11px] text-slate-400 font-medium mb-3 text-center w-full block">{formatMessageTime(msg.createdAt)}</span>}
                                         
                                         <div className={`flex items-end gap-2 ${isMe ? 'justify-end' : 'justify-start'} group relative mb-2`}>
-                                            
                                             {!isMe && currentChat.isGroup && msg.senderId && (
                                                 <div className="flex flex-col items-center gap-1 mb-1 mr-1">
                                                     <div className="w-7 h-7 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold overflow-hidden shadow-sm">
@@ -1330,35 +1330,25 @@ export default function Home() {
 
                                             <div className="relative max-w-[85%] md:max-w-[75%] flex flex-col gap-1.5" onContextMenu={(e) => { e.preventDefault(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }}>
                                                 {!isMe && currentChat.isGroup && msg.senderId && <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-2 font-medium">{msg.senderId.fullName}</span>}
+                                                
                                                 {msg.isUnsent ? (
-                                                    <div className={`py-2 px-4 rounded-[22px] text-[14px] italic border ${isMe ? 'bg-transparent border-slate-300 dark:border-slate-600 text-slate-400 ml-auto' : 'bg-transparent border-slate-300 dark:border-slate-600 text-slate-400 mr-auto'}`}>
-                                                        🚫 Tin nhắn đã được thu hồi
-                                                    </div>
+                                                    <div className={`py-2 px-4 rounded-[22px] text-[14px] italic border ${isMe ? 'bg-transparent border-slate-300 dark:border-slate-600 text-slate-400 ml-auto' : 'bg-transparent border-slate-300 dark:border-slate-600 text-slate-400 mr-auto'}`}>🚫 Tin nhắn đã được thu hồi</div>
                                                 ) : (
                                                     <>
                                                         {msg.replyTo && !msg.replyTo.isUnsent && (
-                                                            <div 
-                                                                onClick={() => {
-                                                                    const target = document.getElementById(`msg-${msg.replyTo._id}`);
-                                                                    if(target) {
-                                                                        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                                                        target.classList.add('bg-blue-50', 'dark:bg-blue-900/50', 'rounded-2xl', 'p-1');
-                                                                        setTimeout(() => target.classList.remove('bg-blue-50', 'dark:bg-blue-900/50', 'rounded-2xl', 'p-1'), 1500);
-                                                                    }
-                                                                }}
-                                                                className={`cursor-pointer mb-1 px-3 py-2 rounded-xl max-w-full opacity-80 hover:opacity-100 transition-opacity ${isMe ? 'bg-indigo-100 text-indigo-800 self-end' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 self-start'}`}
-                                                            >
-                                                                <div className="text-[12px] line-clamp-3 break-words whitespace-pre-wrap">
-                                                                    <span className="font-bold mr-1">↩</span> 
-                                                                    {msg.replyTo.text || "Đã trả lời đính kèm"}
-                                                                </div>
+                                                            <div onClick={() => { const target = document.getElementById(`msg-${msg.replyTo._id}`); if(target) { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); target.classList.add('bg-blue-50', 'dark:bg-blue-900/50', 'rounded-2xl', 'p-1'); setTimeout(() => target.classList.remove('bg-blue-50', 'dark:bg-blue-900/50', 'rounded-2xl', 'p-1'), 1500); } }} className={`cursor-pointer mb-1 px-3 py-2 rounded-xl max-w-full opacity-80 hover:opacity-100 transition-opacity ${isMe ? 'bg-indigo-100 text-indigo-800 self-end' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 self-start'}`}>
+                                                                <div className="text-[12px] line-clamp-3 break-words whitespace-pre-wrap"><span className="font-bold mr-1">↩</span>{msg.replyTo.text || "Đã trả lời đính kèm"}</div>
                                                             </div>
                                                         )}
+                                                        
+                                                        {/* ẢNH VÀ VIDEO ĐÃ CÓ CHỨC NĂNG CLICK PHÓNG TO */}
                                                         {msg.imageUrl && <img onClick={() => setViewingMedia({ url: msg.imageUrl, type: 'image', name: msg.fileName || 'image.png' })} src={msg.imageUrl} className={`cursor-zoom-in hover:opacity-90 max-w-full h-auto max-h-56 object-cover rounded-2xl shadow-sm ${isMe ? 'ml-auto' : 'mr-auto'} transition-opacity`} />}
                                                         {msg.videoUrl && <div className={`relative w-fit ${isMe ? 'ml-auto' : 'mr-auto'}`}><video src={msg.videoUrl} className="max-w-full h-auto max-h-56 rounded-2xl shadow-sm bg-black" /><button onClick={() => setViewingMedia({ url: msg.videoUrl, type: 'video', name: msg.fileName || 'video.mp4' })} className="absolute inset-0 w-full h-full flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity rounded-2xl cursor-zoom-in"><i className="ri-fullscreen-line text-white text-4xl drop-shadow-md"></i></button></div>}
                                                         {msg.fileUrl && <a href={msg.fileUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 p-3 rounded-2xl transition-all text-sm font-medium shadow-sm w-fit ${isMe ? 'bg-indigo-50 text-indigo-700 ml-auto' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 mr-auto'}`}>📎 <span className="truncate max-w-[150px]">{msg.fileName}</span></a>}
                                                         {msg.text && <div className={`py-2 px-4 rounded-[22px] text-[15px] shadow-sm w-fit max-w-full break-words whitespace-pre-wrap ${isMe ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-sm ml-auto' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-600 rounded-tl-sm mr-auto'}`}>{msg.text}</div>}
                                                         {msg.reactions && msg.reactions.length > 0 && <div className={`absolute -bottom-3 ${isMe ? 'right-2' : 'left-2'} bg-white border border-slate-100 shadow-md rounded-full px-2 py-0.5 text-xs flex gap-1 z-10`}>{msg.reactions.map((r, i) => <span key={i}>{r.emoji}</span>)}</div>}
+                                                        
+                                                        {/* MENU TƯƠNG TÁC */}
                                                         <div className={`absolute top-[100%] mt-2 flex items-center gap-1.5 transition-all duration-200 bg-white border border-slate-200 shadow-lg rounded-full px-3 py-1.5 z-30 ${activeMenuId === msg._id ? 'opacity-100 visible translate-y-0' : 'opacity-0 invisible -translate-y-2'} ${isMe ? 'right-0' : 'left-0'}`}>
                                                             <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">↩️</button>
                                                             <button onClick={(e) => { e.stopPropagation(); handleReact(msg._id, '❤️'); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">❤️</button>
@@ -1369,21 +1359,36 @@ export default function Home() {
                                                 )}
                                             </div>
 
+                                            {/* NÚT 3 CHẤM */}
                                             {!isMe && !msg.isUnsent && (
-                                            <div className="relative">
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }} 
-                                                    className="text-slate-300 hover:text-slate-600 dark:hover:text-slate-200 transition-all p-2 rounded-full opacity-100 md:opacity-0 group-hover:opacity-100 focus:opacity-100 active:bg-slate-100 dark:active:bg-slate-700 w-8 h-8 flex items-center justify-center"
-                                                >
-                                                    <i className="ri-more-2-fill text-xl"></i>
-                                                </button>
-                                            </div>
+                                                <div className="relative">
+                                                    <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }} className="text-slate-300 hover:text-slate-600 dark:hover:text-slate-200 transition-all p-2 rounded-full opacity-100 md:opacity-0 group-hover:opacity-100 focus:opacity-100 active:bg-slate-100 dark:active:bg-slate-700 w-8 h-8 flex items-center justify-center">
+                                                        <i className="ri-more-2-fill text-xl"></i>
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                     </div>
                                 );
                             })}
                             
+                            {/* HIỆU ỨNG TÊN LỬA CHỜ GỬI FILE CỰC NGẦU */}
+                            {isUploading && (
+                                <div className="flex justify-end mb-4 animate-pulse">
+                                    <div className="bg-slate-100 dark:bg-slate-700/80 p-3 md:p-4 rounded-2xl rounded-tr-sm shadow-sm flex items-center gap-3 md:gap-4 border border-slate-200 dark:border-slate-600">
+                                        <div className="w-8 h-8 md:w-10 md:h-10 bg-indigo-500 rounded-full flex items-center justify-center animate-bounce shadow-lg shadow-indigo-500/50">
+                                            <i className="ri-rocket-2-fill text-white text-lg md:text-xl"></i>
+                                        </div>
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="text-slate-700 dark:text-slate-200 text-xs md:text-[13px] font-bold">Đang đóng gói Media...</span>
+                                            <div className="w-24 md:w-32 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                                                <div className="h-full bg-indigo-500 w-1/2 rounded-full animate-ping origin-left"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             {typingUsers[currentChat._id] && (
                                 <div className="flex justify-start mb-2">
                                     <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-3xl p-3 px-4 shadow-sm w-fit flex gap-1 items-center">
@@ -1398,23 +1403,16 @@ export default function Home() {
                                 <div className="flex justify-end mt-1 pr-2 mb-2">
                                     <div className="flex items-center gap-1.5 opacity-70">
                                         <div className="w-3 h-3 rounded-full overflow-hidden border border-slate-200">
-                                            {currentChat.avatar ? (
-                                                <img src={currentChat.avatar} className="w-full h-full object-cover" alt="seen-avatar" />
-                                            ) : (
-                                                <div className="w-full h-full bg-slate-300 flex items-center justify-center text-[8px] text-white">
-                                                    {currentChat.fullName[0]}
-                                                </div>
-                                            )}
+                                            {currentChat.avatar ? <img src={currentChat.avatar} className="w-full h-full object-cover" alt="seen-avatar" /> : <div className="w-full h-full bg-slate-300 flex items-center justify-center text-[8px] text-white">{currentChat.fullName[0]}</div>}
                                         </div>
-                                        <span className="text-[10px] text-slate-500 font-medium">
-                                            {formatReadTime(lastMessage.readAt)}
-                                        </span>
+                                        <span className="text-[10px] text-slate-500 font-medium">{formatReadTime(lastMessage.readAt)}</span>
                                     </div>
                                 </div>
                             )}
                             <div ref={scrollRef} />
                         </div>
 
+                        {/* INPUT TIN NHẮN */}
                         <div className="bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 p-3 md:p-4 transition-colors pb-safe">
                             {replyingTo && (
                                 <div className="mb-3 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 rounded-xl flex justify-between items-center">
@@ -1433,34 +1431,20 @@ export default function Home() {
                                 
                                 <div className="flex items-center relative">
                                     <div className="md:hidden relative">
-                                        <button type="button" onClick={() => setShowAttachmentMenu(!showAttachmentMenu)} className="text-slate-400 hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400 transition-all w-9 h-9 rounded-full flex items-center justify-center text-2xl">
-                                            <i className={`ri-add-circle-${showAttachmentMenu ? 'fill text-blue-500' : 'line'}`}></i>
-                                        </button>
-
+                                        <button type="button" onClick={() => setShowAttachmentMenu(!showAttachmentMenu)} className="text-slate-400 hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400 transition-all w-9 h-9 rounded-full flex items-center justify-center text-2xl"><i className={`ri-add-circle-${showAttachmentMenu ? 'fill text-blue-500' : 'line'}`}></i></button>
                                         {showAttachmentMenu && (
                                             <div className="absolute bottom-[130%] left-0 z-50 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.1)] rounded-2xl p-2 flex flex-col gap-1 w-[160px] origin-bottom-left transition-all">
-                                                <button type="button" onClick={() => { imageInputRef.current.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 p-2 rounded-xl text-[13px] font-bold text-slate-700 dark:text-slate-200 transition-colors">
-                                                    <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-slate-700 text-blue-500 flex items-center justify-center text-lg"><i className="ri-image-add-fill"></i></div>
-                                                    Gửi hình ảnh
-                                                </button>
-                                                <button type="button" onClick={() => { videoInputRef.current.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 p-2 rounded-xl text-[13px] font-bold text-slate-700 dark:text-slate-200 transition-colors">
-                                                    <div className="w-8 h-8 rounded-full bg-purple-50 dark:bg-slate-700 text-purple-500 flex items-center justify-center text-lg"><i className="ri-video-add-fill"></i></div>
-                                                    Gửi Video
-                                                </button>
-                                                <button type="button" onClick={() => { fileInputRef.current.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 p-2 rounded-xl text-[13px] font-bold text-slate-700 dark:text-slate-200 transition-colors">
-                                                    <div className="w-8 h-8 rounded-full bg-orange-50 dark:bg-slate-700 text-orange-500 flex items-center justify-center text-lg"><i className="ri-attachment-2"></i></div>
-                                                    Gửi Tập tin
-                                                </button>
+                                                <button type="button" onClick={() => { imageInputRef.current.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 p-2 rounded-xl text-[13px] font-bold text-slate-700 dark:text-slate-200 transition-colors"><div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-slate-700 text-blue-500 flex items-center justify-center text-lg"><i className="ri-image-add-fill"></i></div>Gửi hình ảnh</button>
+                                                <button type="button" onClick={() => { videoInputRef.current.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 p-2 rounded-xl text-[13px] font-bold text-slate-700 dark:text-slate-200 transition-colors"><div className="w-8 h-8 rounded-full bg-purple-50 dark:bg-slate-700 text-purple-500 flex items-center justify-center text-lg"><i className="ri-video-add-fill"></i></div>Gửi Video</button>
+                                                <button type="button" onClick={() => { fileInputRef.current.click(); setShowAttachmentMenu(false); }} className="flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 p-2 rounded-xl text-[13px] font-bold text-slate-700 dark:text-slate-200 transition-colors"><div className="w-8 h-8 rounded-full bg-orange-50 dark:bg-slate-700 text-orange-500 flex items-center justify-center text-lg"><i className="ri-attachment-2"></i></div>Gửi Tập tin</button>
                                             </div>
                                         )}
                                     </div>
-
                                     <div className="hidden md:flex gap-1 items-center">
                                         <button type="button" onClick={() => imageInputRef.current.click()} className="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 transition-all w-10 h-10 rounded-full flex items-center justify-center text-xl"><i className="ri-image-add-fill"></i></button>
                                         <button type="button" onClick={() => videoInputRef.current.click()} className="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 transition-all w-10 h-10 rounded-full flex items-center justify-center text-xl"><i className="ri-video-add-fill"></i></button>
                                         <button type="button" onClick={() => fileInputRef.current.click()} className="text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 transition-all w-10 h-10 rounded-full flex items-center justify-center text-xl"><i className="ri-attachment-2"></i></button>
                                     </div>
-
                                     <div className="relative">
                                         <button type="button" onClick={() => setShowEmoji(!showEmoji)} className="text-slate-400 hover:text-yellow-500 dark:text-slate-500 dark:hover:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-slate-700 transition-all w-9 h-9 md:w-10 md:h-10 rounded-full flex items-center justify-center text-xl"><i className="ri-emotion-happy-fill"></i></button>
                                         {showEmoji && <div className="absolute bottom-[130%] left-0 md:-left-20 z-50 shadow-2xl scale-90 origin-bottom-left"><EmojiPicker theme={isDarkMode ? 'dark' : 'light'} onEmojiClick={(e) => { setNewMessage(prev => prev + e.emoji); setShowEmoji(false); }} /></div>}
@@ -1468,13 +1452,8 @@ export default function Home() {
                                 </div>
 
                                 <form onSubmit={handleSendMessage} className="flex-1 flex gap-2 md:gap-3 h-full items-center ml-1 md:ml-2">
-                                    <input type="text" placeholder="Nhắn tin..." value={newMessage} 
-                                        onChange={(e) => { setNewMessage(e.target.value); socket.emit('typing', { senderId: user.id, receiverId: currentChat._id }); if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current); typingTimeoutRef.current = setTimeout(() => socket.emit('stop_typing', { senderId: user.id, receiverId: currentChat._id }), 2000); }} 
-                                        className="flex-1 h-full bg-[#f0f4f8] dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-full px-4 md:px-5 text-[14px] md:text-[15px] outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-700 dark:text-slate-200" 
-                                    />
-                                    <button type="submit" className="w-10 h-10 md:w-12 md:h-12 bg-[#0a192f] dark:bg-blue-600 hover:bg-blue-600 dark:hover:bg-blue-500 text-white rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 shrink-0">
-                                        <i className="ri-send-plane-fill text-lg md:text-xl relative right-[1px]"></i>
-                                    </button>
+                                    <input type="text" placeholder="Nhắn tin..." value={newMessage} onChange={(e) => { setNewMessage(e.target.value); socket.emit('typing', { senderId: user.id, receiverId: currentChat._id }); if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current); typingTimeoutRef.current = setTimeout(() => socket.emit('stop_typing', { senderId: user.id, receiverId: currentChat._id }), 2000); }} className="flex-1 h-full bg-[#f0f4f8] dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-full px-4 md:px-5 text-[14px] md:text-[15px] outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-700 dark:text-slate-200" />
+                                    <button type="submit" className="w-10 h-10 md:w-12 md:h-12 bg-[#0a192f] dark:bg-blue-600 hover:bg-blue-600 dark:hover:bg-blue-500 text-white rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 shrink-0"><i className="ri-send-plane-fill text-lg md:text-xl relative right-[1px]"></i></button>
                                 </form>
                             </div>
                         </div>

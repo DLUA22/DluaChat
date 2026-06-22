@@ -522,6 +522,7 @@ export default function Home() {
         const file = e.target.files[0]; 
         if (!file) return; 
         setIsUploading(true);
+        setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
         const formData = new FormData(); 
         formData.append('file', file); 
         try { 
@@ -544,7 +545,6 @@ export default function Home() {
                 msgToSend.replyTo = { ...msgToSend.replyTo, text: decryptText(msgToSend.replyTo.text) };
             }
             setMessages((prev) => [...prev, msgToSend]); 
-            
             if (isGroup) { 
                 currentChat.members.forEach(m => { 
                     if(m._id !== user.id) socket.emit('send_message', { ...msgToSend, receiverId: m._id, groupId: currentChat._id }); 
@@ -960,13 +960,13 @@ export default function Home() {
     return (
         <motion.div onClick={() => setActiveMenuId(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-[100dvh] bg-[#f0f4f8] dark:bg-slate-900 p-0 md:p-6 md:gap-6 font-['Be_Vietnam_Pro'] relative transition-colors duration-300 overflow-hidden">
             <Toaster position="top-center" />
+            
             {/* LỚP PHỦ XEM ẢNH/VIDEO PHÓNG TO VÀ TẢI XUỐNG */}
             {viewingMedia && (
                 <div className="fixed inset-0 bg-black/95 z-[99999] flex flex-col items-center justify-center p-4 md:p-8 backdrop-blur-sm">
                     <div className="absolute top-6 right-6 flex gap-4 z-10">
                         <button 
                             onClick={async () => {
-                                // Logic ép tải xuống thay vì mở tab mới
                                 try {
                                     const response = await fetch(viewingMedia.url);
                                     const blob = await response.blob();
@@ -1003,6 +1003,7 @@ export default function Home() {
                     )}
                 </div>
             )}
+
             {/* LỚP PHỦ CUỘC GỌI */}
             {callStatus !== 'idle' && (
                 <div className="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center backdrop-blur-md overflow-hidden touch-none">
@@ -1034,13 +1035,7 @@ export default function Home() {
                                     <div className="w-full h-full bg-black relative flex items-center justify-center">
                                         <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-contain" />
                                         <div className="absolute top-12 right-4 md:top-auto md:bottom-8 md:right-8 w-24 h-36 md:w-64 md:h-48 bg-slate-800 rounded-xl md:rounded-2xl overflow-hidden shadow-2xl border border-white/20 md:border-2 md:border-slate-600/50 z-10 cursor-pointer">
-                                            <video 
-                                                ref={myVideoRef} 
-                                                autoPlay 
-                                                playsInline 
-                                                muted 
-                                                className={`w-full h-full object-cover transition-all ${isScreenSharing ? '' : 'transform scale-x-[-1]'} ${isVideoOff ? 'opacity-0' : 'opacity-100'}`} 
-                                            />
+                                            <video ref={myVideoRef} autoPlay playsInline muted className={`w-full h-full object-cover transition-all ${isScreenSharing ? '' : 'transform scale-x-[-1]'} ${isVideoOff ? 'opacity-0' : 'opacity-100'}`} />
                                             {isVideoOff && <div className="absolute inset-0 flex items-center justify-center text-white text-2xl md:text-4xl bg-slate-800">🚫</div>}
                                         </div>
                                     </div>
@@ -1061,7 +1056,6 @@ export default function Home() {
 
                             <div className="absolute bottom-10 md:bottom-12 flex gap-4 md:gap-6 items-center bg-slate-900/60 md:bg-slate-800/80 px-6 py-3 md:px-8 md:py-4 rounded-full backdrop-blur-xl z-20 shadow-2xl border border-white/10">
                                 <button onClick={toggleAudio} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg ${isMuted ? 'bg-white text-slate-900' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`} title="Bật/Tắt Micro">{isMuted ? '🔇' : '🎤'}</button>
-                                
                                 {callData?.type === 'video' && (
                                     <>
                                         <button onClick={toggleVideo} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg ${isVideoOff ? 'bg-white text-slate-900' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`} title="Bật/Tắt Camera">{isVideoOff ? '🚫' : '📹'}</button>
@@ -1069,7 +1063,6 @@ export default function Home() {
                                         <button onClick={toggleScreenShare} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg ${isScreenSharing ? 'bg-blue-500 text-white' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`} title="Chia sẻ màn hình">🖥️</button>
                                     </>
                                 )}
-                                
                                 <button onClick={endCall} className="bg-red-500 hover:bg-red-600 text-white w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center text-2xl md:text-3xl shadow-[0_0_30px_rgba(239,68,68,0.6)] hover:scale-110 transition-all ml-2 md:ml-4">📞</button>
                             </div>
                         </div>

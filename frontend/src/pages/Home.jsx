@@ -14,6 +14,14 @@ const socket = io('https://dlua-chat-api.onrender.com');
 // ==========================================
 // CÁC HÀM TIỆN ÍCH (UTILS)
 // ==========================================
+const decodeFileName = (name) => {
+    if (!name) return "Tai_lieu_dinh_kem";
+    try { 
+        return decodeURIComponent(escape(name)); 
+    } catch (e) { 
+        return name; 
+    }
+};
 const encryptText = (text) => {
     if (!text) return "";
     try { return CryptoJS.AES.encrypt(text, SECRET_KEY).toString(); } 
@@ -158,10 +166,29 @@ export default function Home() {
             socket.emit('join_server', parsedUser.id);
             fetchInitialData(parsedUser.id);
         }
-
         const handleBeforeUnload = () => socket.disconnect();
+        const handleAuthExpired = () => {
+            toast.error('Phiên đăng nhập hết hạn hoặc Server bảo trì. Vui lòng đăng nhập lại!', { duration: 5000 });
+            navigate('/login');
+        };
+        const handleSocketReconnect = () => {
+            if (loggedInUser) {
+                const parsedUser = JSON.parse(loggedInUser);
+                socket.emit('join_server', parsedUser.id);
+                fetchInitialData(parsedUser.id);
+                if (currentChatRef.current) fetchMessages(1);
+            }
+        };
+
         window.addEventListener('beforeunload', handleBeforeUnload);
-        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+        window.addEventListener('auth_expired', handleAuthExpired);
+        socket.on('connect', handleSocketReconnect);
+
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            window.removeEventListener('auth_expired', handleAuthExpired);
+            socket.off('connect', handleSocketReconnect);
+        };
     }, [navigate]);
 
     useEffect(() => {
@@ -1358,25 +1385,24 @@ export default function Home() {
                                                                 onClick={async (e) => {
                                                                     e.preventDefault();
                                                                     try {
-                                                                        const loadingToast = toast.loading('Đang chuẩn bị file...');
+                                                                        const loadingToast = toast.loading('Đang chuẩn bị tải...');
                                                                         const response = await fetch(msg.fileUrl);
                                                                         const blob = await response.blob();
                                                                         const blobUrl = window.URL.createObjectURL(blob);
                                                                         const link = document.createElement('a');
                                                                         link.href = blobUrl;
-                                                                        link.download = msg.fileName || 'tai-lieu-dlua.file'; 
+                                                                        // ÉP TRÌNH DUYỆT ĐẶT ĐÚNG TÊN TIẾNG VIỆT SAU KHI DỊCH NGƯỢC
+                                                                        link.download = decodeFileName(msg.fileName); 
                                                                         document.body.appendChild(link);
                                                                         link.click();
                                                                         document.body.removeChild(link);
                                                                         window.URL.revokeObjectURL(blobUrl);
                                                                         toast.dismiss(loadingToast);
-                                                                    } catch (error) {
-                                                                        window.open(msg.fileUrl, '_blank');
-                                                                    }
+                                                                    } catch (error) { window.open(msg.fileUrl, '_blank'); }
                                                                 }}
                                                                 className={`flex items-center gap-2 p-3 rounded-2xl transition-all text-sm font-medium shadow-sm w-fit cursor-pointer ${isMe ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 ml-auto' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 mr-auto'}`}
                                                             >
-                                                                📎 <span className="truncate max-w-[150px] pointer-events-none">{msg.fileName || "Tài liệu đính kèm"}</span>
+                                                                📎 <span className="truncate max-w-[150px] pointer-events-none">{decodeFileName(msg.fileName)}</span>
                                                             </button>
                                                         )}
                                                         {msg.text && <div className={`py-2 px-4 rounded-[22px] text-[15px] shadow-sm w-fit max-w-full break-words whitespace-pre-wrap ${isMe ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-sm ml-auto' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-600 rounded-tl-sm mr-auto'}`}>{msg.text}</div>}

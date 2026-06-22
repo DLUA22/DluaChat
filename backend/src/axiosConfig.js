@@ -25,7 +25,7 @@ instance.interceptors.response.use(
         if (error.response && (error.response.status === 401 || error.response.status === 403)) {
             localStorage.clear();
             sessionStorage.clear();
-            window.location.href = '/login';
+            window.dispatchEvent(new Event('auth_expired'));
         }
         return Promise.reject(error);
     }

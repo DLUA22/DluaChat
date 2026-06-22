@@ -159,23 +159,30 @@ export default function Home() {
     useEffect(() => {
         const loggedInUser = localStorage.getItem('user') || sessionStorage.getItem('user');
         
-        if (!loggedInUser) navigate('/login');
-        else {
-            const parsedUser = JSON.parse(loggedInUser);
-            setUser(parsedUser);
-            socket.emit('join_server', parsedUser.id);
-            fetchInitialData(parsedUser.id);
+        if (!loggedInUser) {
+            navigate('/login');
+            return; // Dừng ngay nếu chưa login
         }
+        
+        const parsedUser = JSON.parse(loggedInUser);
+        setUser(parsedUser);
+        socket.emit('join_server', parsedUser.id);
+        fetchInitialData(parsedUser.id);
+
         const handleBeforeUnload = () => socket.disconnect();
+        
         const handleAuthExpired = () => {
-            toast.error('Phiên đăng nhập hết hạn hoặc Server bảo trì. Vui lòng đăng nhập lại!', { duration: 5000 });
+            toast.error('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại!', { duration: 5000 });
             navigate('/login');
         };
+
         const handleSocketReconnect = () => {
-            if (loggedInUser) {
-                const parsedUser = JSON.parse(loggedInUser);
-                socket.emit('join_server', parsedUser.id);
-                fetchInitialData(parsedUser.id);
+            // Lấy lại user từ localStorage để chắc chắn nó luôn mới nhất
+            const currentSessionUser = localStorage.getItem('user') || sessionStorage.getItem('user');
+            if (currentSessionUser) {
+                const pUser = JSON.parse(currentSessionUser);
+                socket.emit('join_server', pUser.id);
+                fetchInitialData(pUser.id);
                 if (currentChatRef.current) fetchMessages(1);
             }
         };

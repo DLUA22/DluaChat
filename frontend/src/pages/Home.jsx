@@ -161,39 +161,40 @@ export default function Home() {
         
         if (!loggedInUser) {
             navigate('/login');
-            return; // Dừng ngay nếu chưa login
+            return;
         }
-        
-        const parsedUser = JSON.parse(loggedInUser);
-        setUser(parsedUser);
-        socket.emit('join_server', parsedUser.id);
-        fetchInitialData(parsedUser.id);
-
+        try {
+            const parsedUser = JSON.parse(loggedInUser);
+            if (!parsedUser || !parsedUser.id) throw new Error("Dữ liệu user bị thiếu");
+            
+            setUser(parsedUser);
+            socket.emit('join_server', parsedUser.id);
+            fetchInitialData(parsedUser.id);
+        } catch (error) {
+            console.error("Dữ liệu cục bộ bị lỗi, tự động dọn dẹp!");
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = '/login';
+            return;
+        }
         const handleBeforeUnload = () => socket.disconnect();
-        
-        const handleAuthExpired = () => {
-            toast.error('Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại!', { duration: 5000 });
-            navigate('/login');
-        };
-
         const handleSocketReconnect = () => {
-            // Lấy lại user từ localStorage để chắc chắn nó luôn mới nhất
             const currentSessionUser = localStorage.getItem('user') || sessionStorage.getItem('user');
             if (currentSessionUser) {
-                const pUser = JSON.parse(currentSessionUser);
-                socket.emit('join_server', pUser.id);
-                fetchInitialData(pUser.id);
-                if (currentChatRef.current) fetchMessages(1);
+                try {
+                    const pUser = JSON.parse(currentSessionUser);
+                    socket.emit('join_server', pUser.id);
+                    fetchInitialData(pUser.id);
+                    if (currentChatRef.current) fetchMessages(1);
+                } catch (e) {
+                    window.location.href = '/login';
+                }
             }
         };
-
         window.addEventListener('beforeunload', handleBeforeUnload);
-        window.addEventListener('auth_expired', handleAuthExpired);
         socket.on('connect', handleSocketReconnect);
-
         return () => {
             window.removeEventListener('beforeunload', handleBeforeUnload);
-            window.removeEventListener('auth_expired', handleAuthExpired);
             socket.off('connect', handleSocketReconnect);
         };
     }, [navigate]);

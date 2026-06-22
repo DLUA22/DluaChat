@@ -23,9 +23,10 @@ instance.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+            console.warn("Phiên đăng nhập không hợp lệ, đang tự động làm sạch...");
             localStorage.clear();
             sessionStorage.clear();
-            window.dispatchEvent(new Event('auth_expired'));
+            window.location.href = '/login';
         }
         return Promise.reject(error);
     }

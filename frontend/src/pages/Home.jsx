@@ -421,7 +421,22 @@ export default function Home() {
     useEffect(() => { 
         if (page > 1) fetchMessages(page); 
     }, [page]);
+    useEffect(() => {
+        const handleBackSwipe = () => {
+            if (currentChat) {
+                setCurrentChat(null);
+            }
+        };
 
+        if (currentChat) {
+            window.history.pushState({ isChatOpen: true }, '');
+            window.addEventListener('popstate', handleBackSwipe);
+        }
+
+        return () => {
+            window.removeEventListener('popstate', handleBackSwipe);
+        };
+    }, [currentChat]);
 
     // ==========================================
     // API CALLS & HANDLERS
@@ -1312,7 +1327,13 @@ export default function Home() {
                         {/* HEADER CHAT */}
                         <div className="h-[80px] border-b border-slate-100 dark:border-slate-700 flex items-center justify-between px-4 md:px-8 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md z-10 sticky top-0 transition-colors pt-safe">
                             <div className="flex items-center gap-3">
-                                <button onClick={() => setCurrentChat(null)} className="md:hidden w-10 h-10 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all">
+                                <button 
+                                    onClick={() => {
+                                        window.history.back();
+                                        setTimeout(() => { if (currentChat) setCurrentChat(null); }, 100);
+                                    }} 
+                                    className="md:hidden w-10 h-10 flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all"
+                                >
                                     <i className="ri-arrow-left-s-line text-3xl"></i>
                                 </button>
                                 <div className="w-11 h-11 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center font-bold text-slate-500 dark:text-slate-300 overflow-hidden relative">

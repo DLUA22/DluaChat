@@ -240,7 +240,7 @@ export default function Home() {
 
         const handleReceiveMessage = (data) => {
             if (data.text && data.type === 'text') data.text = decryptText(data.text);
-            if (data.replyTo && data.replyTo.text && data.replyTo.text.startsWith("U2FsdGVk")) {
+            if (data.replyTo && typeof data.replyTo.text === 'string' && data.replyTo.text.startsWith("U2FsdGVk")) {
                 data.replyTo.text = decryptText(data.replyTo.text);
             }
             const isGroupMsg = data.groupId !== null && data.groupId !== undefined;
@@ -422,7 +422,7 @@ export default function Home() {
                 let decryptedText = msg.text;
                 if (msg.text && msg.type === 'text') decryptedText = decryptText(msg.text);
                 let decryptedReplyTo = msg.replyTo;
-                if (msg.replyTo && msg.replyTo.text && msg.replyTo.text.startsWith("U2FsdGVk")) {
+                if (msg.replyTo && typeof msg.replyTo.text === 'string' && msg.replyTo.text.startsWith("U2FsdGVk")) {
                     decryptedReplyTo = { ...msg.replyTo, text: decryptText(msg.replyTo.text) };
                 }
                 return { ...msg, text: decryptedText, replyTo: decryptedReplyTo };
@@ -508,7 +508,7 @@ export default function Home() {
             }
 
             let msgToDisplay = { ...res.data, senderName: user.fullName, text: newMessage }; 
-            if (msgToDisplay.replyTo && msgToDisplay.replyTo.text && msgToDisplay.replyTo.text.startsWith("U2FsdGVk")) {
+            if (msgToDisplay.replyTo && typeof msgToDisplay.replyTo.text === 'string' && msgToDisplay.replyTo.text.startsWith("U2FsdGVk")) {
                 msgToDisplay.replyTo = { ...msgToDisplay.replyTo, text: decryptText(msgToDisplay.replyTo.text) };
             }
             setMessages((prev) => [...prev, msgToDisplay]);
@@ -535,13 +535,13 @@ export default function Home() {
                 groupId: isGroup ? currentChat._id : null, 
                 text: '', 
                 [payloadKey]: uploadRes.data.url, 
-                fileName: type !== 'image' ? uploadRes.data.name : null, 
+                fileName: type !== 'image' ? file.name : null,
                 replyTo: replyingTo ? replyingTo._id : null, 
                 type: 'text' 
             }; 
             const msgRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); 
             let msgToSend = { ...msgRes.data, senderName: user.fullName }; 
-            if (msgToSend.replyTo && msgToSend.replyTo.text && msgToSend.replyTo.text.startsWith("U2FsdGVk")) {
+            if (msgToSend.replyTo && typeof msgToSend.replyTo.text === 'string' && msgToSend.replyTo.text.startsWith("U2FsdGVk")) {
                 msgToSend.replyTo = { ...msgToSend.replyTo, text: decryptText(msgToSend.replyTo.text) };
             }
             setMessages((prev) => [...prev, msgToSend]); 

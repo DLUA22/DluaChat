@@ -237,7 +237,21 @@ export default function Home() {
 
     useEffect(() => {
         if (!user) return;
+        const handleDisconnect = () => {
+            console.log("Mất kết nối với Server!");
+        };
+        const handleReconnect = () => {
+            console.log("Đã kết nối lại Server!");
+            socket.emit('join_server', user.id);
+            fetchInitialData(user.id);
+            if (currentChatRef.current) {
+                setPage(1);
+                fetchMessages(1);
+            }
+        };
 
+        socket.on('disconnect', handleDisconnect);
+        socket.on('connect', handleReconnect);
         const handleReceiveMessage = (data) => {
             if (data.text && data.type === 'text') data.text = decryptText(data.text);
             if (data.replyTo && typeof data.replyTo.text === 'string' && data.replyTo.text.startsWith("U2FsdGVk")) {
@@ -349,6 +363,8 @@ export default function Home() {
         });
 
         return () => {
+            socket.off('disconnect', handleDisconnect);
+            socket.off('connect', handleReconnect);
             socket.off('receive_message'); socket.off('message_unsent'); socket.off('message_reacted'); socket.off('messages_read');
             socket.off('user_status_changed'); socket.off('display_typing'); socket.off('hide_typing'); socket.off('new_friend_request'); 
             socket.off('friend_request_accepted'); socket.off('group_added'); socket.off('group_updated');
@@ -1337,7 +1353,32 @@ export default function Home() {
                                                         {/* ẢNH VÀ VIDEO ĐÃ CÓ CHỨC NĂNG CLICK PHÓNG TO */}
                                                         {msg.imageUrl && <img onClick={() => setViewingMedia({ url: msg.imageUrl, type: 'image', name: msg.fileName || 'image.png' })} src={msg.imageUrl} className={`cursor-zoom-in hover:opacity-90 max-w-full h-auto max-h-56 object-cover rounded-2xl shadow-sm ${isMe ? 'ml-auto' : 'mr-auto'} transition-opacity`} />}
                                                         {msg.videoUrl && <div className={`relative w-fit ${isMe ? 'ml-auto' : 'mr-auto'}`}><video src={msg.videoUrl} className="max-w-full h-auto max-h-56 rounded-2xl shadow-sm bg-black" /><button onClick={() => setViewingMedia({ url: msg.videoUrl, type: 'video', name: msg.fileName || 'video.mp4' })} className="absolute inset-0 w-full h-full flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity rounded-2xl cursor-zoom-in"><i className="ri-fullscreen-line text-white text-4xl drop-shadow-md"></i></button></div>}
-                                                        {msg.fileUrl && <a href={msg.fileUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 p-3 rounded-2xl transition-all text-sm font-medium shadow-sm w-fit ${isMe ? 'bg-indigo-50 text-indigo-700 ml-auto' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 mr-auto'}`}>📎 <span className="truncate max-w-[150px]">{msg.fileName}</span></a>}
+                                                        {msg.fileUrl && (
+                                                            <button 
+                                                                onClick={async (e) => {
+                                                                    e.preventDefault();
+                                                                    try {
+                                                                        const loadingToast = toast.loading('Đang chuẩn bị file...');
+                                                                        const response = await fetch(msg.fileUrl);
+                                                                        const blob = await response.blob();
+                                                                        const blobUrl = window.URL.createObjectURL(blob);
+                                                                        const link = document.createElement('a');
+                                                                        link.href = blobUrl;
+                                                                        link.download = msg.fileName || 'tai-lieu-dlua.file'; 
+                                                                        document.body.appendChild(link);
+                                                                        link.click();
+                                                                        document.body.removeChild(link);
+                                                                        window.URL.revokeObjectURL(blobUrl);
+                                                                        toast.dismiss(loadingToast);
+                                                                    } catch (error) {
+                                                                        window.open(msg.fileUrl, '_blank');
+                                                                    }
+                                                                }}
+                                                                className={`flex items-center gap-2 p-3 rounded-2xl transition-all text-sm font-medium shadow-sm w-fit cursor-pointer ${isMe ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 ml-auto' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 mr-auto'}`}
+                                                            >
+                                                                📎 <span className="truncate max-w-[150px] pointer-events-none">{msg.fileName || "Tài liệu đính kèm"}</span>
+                                                            </button>
+                                                        )}
                                                         {msg.text && <div className={`py-2 px-4 rounded-[22px] text-[15px] shadow-sm w-fit max-w-full break-words whitespace-pre-wrap ${isMe ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-sm ml-auto' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-600 rounded-tl-sm mr-auto'}`}>{msg.text}</div>}
                                                         {msg.reactions && msg.reactions.length > 0 && <div className={`absolute -bottom-3 ${isMe ? 'right-2' : 'left-2'} bg-white border border-slate-100 shadow-md rounded-full px-2 py-0.5 text-xs flex gap-1 z-10`}>{msg.reactions.map((r, i) => <span key={i}>{r.emoji}</span>)}</div>}
                                                         

@@ -559,21 +559,10 @@ export default function Home() {
         setCapturedImage(null);
         setIsCameraOpen(true);
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { width: 480, height: 480, facingMode: "user" }, 
-                audio: false 
-            });
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480, facingMode: "user" }, audio: false });
             setLocketStream(stream);
-            requestAnimationFrame(() => {
-                const video = window.innerWidth >= 768 ? desktopVideoRef.current : mobileVideoRef.current;
-                if (video) {
-                    video.srcObject = stream;
-                    video.play().catch(e => console.log("Auto-play bị chặn, người dùng cần tương tác thêm?"));
-                }
-            });
         } catch (err) {
-            console.error("Lỗi xin quyền Camera:", err);
-            toast.error("Không thể truy cập Camera!");
+            toast.error("Không thể truy cập Camera. Bạn có thể chọn file ảnh tải lên!");
         }
     };
 
@@ -592,10 +581,10 @@ export default function Home() {
         const isDesktop = window.innerWidth >= 768;
         const video = isDesktop ? desktopVideoRef.current : mobileVideoRef.current;
         
-        if (!video || !video.srcObject) {
-            toast.error("Camera chưa sẵn sàng, thử lại nhé!");
+        if (!video) {
+            toast.error("Lỗi: Không tìm thấy luồng Camera!");
             return;
-        }   
+        }
         const canvas = document.createElement('canvas');
         canvas.width = 480;
         canvas.height = 480;
@@ -603,13 +592,11 @@ export default function Home() {
         ctx.translate(480, 0);
         ctx.scale(-1, 1);
         ctx.drawImage(video, 0, 0, 480, 480);
-        
         const dataUrl = canvas.toDataURL('image/jpeg');
         setCapturedImage(dataUrl);
-        
-        // Dừng stream sau khi chụp
         if (locketStream) {
             locketStream.getTracks().forEach(track => track.stop());
+            setLocketStream(null);
         }
     };
     const handlePublishPost = async () => {
@@ -1171,7 +1158,13 @@ export default function Home() {
                     <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
                         {!capturedImage ? (
                             <video 
-                                ref={isMobileOverlay ? mobileVideoRef : desktopVideoRef} 
+                                ref={(el) => {
+                                    if (isMobileOverlay) mobileVideoRef.current = el;
+                                    else desktopVideoRef.current = el;
+                                    if (el && locketStream && el.srcObject !== locketStream) {
+                                        el.srcObject = locketStream;
+                                    }
+                                }} 
                                 autoPlay playsInline muted 
                                 className="w-full h-full object-cover transform scale-x-[-1]" 
                             />

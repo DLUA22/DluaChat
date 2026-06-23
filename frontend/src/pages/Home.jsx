@@ -157,46 +157,33 @@ export default function Home() {
     // ==========================================
 
     useEffect(() => {
-        const appVersion = localStorage.getItem('app_version');
-        if (appVersion !== 'v2') {
-            console.warn("Phát hiện phiên bản cũ, tự động dọn dẹp!");
-            localStorage.clear();
-            sessionStorage.clear();
-            localStorage.setItem('app_version', 'v2');
-            window.location.replace('/login');
-            return;
-        }
         const loggedInUser = localStorage.getItem('user') || sessionStorage.getItem('user');
-        
         if (!loggedInUser) {
             navigate('/login');
             return;
         }
         try {
             const parsedUser = JSON.parse(loggedInUser);
-            if (!parsedUser || !parsedUser.id) throw new Error("Dữ liệu user bị thiếu");
-            
+            if (!parsedUser || !parsedUser.id) throw new Error("Dữ liệu user bị thiếu");  
             setUser(parsedUser);
             socket.emit('join_server', parsedUser.id);
             fetchInitialData(parsedUser.id);
         } catch (error) {
-            console.error("Dữ liệu cục bộ bị lỗi, tự động dọn dẹp!");
             localStorage.clear();
             sessionStorage.clear();
-            window.location.href = '/login';
+            navigate('/login');
             return;
         }
         const handleBeforeUnload = () => socket.disconnect();
         const handleSocketReconnect = () => {
-            const currentSessionUser = localStorage.getItem('user') || sessionStorage.getItem('user');
-            if (currentSessionUser) {
+            if (loggedInUser) {
                 try {
-                    const pUser = JSON.parse(currentSessionUser);
+                    const pUser = JSON.parse(loggedInUser);
                     socket.emit('join_server', pUser.id);
                     fetchInitialData(pUser.id);
                     if (currentChatRef.current) fetchMessages(1);
                 } catch (e) {
-                    window.location.href = '/login';
+                    console.error("Lỗi khi kết nối lại, nhưng app vẫn an toàn!");
                 }
             }
         };

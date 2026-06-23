@@ -119,10 +119,15 @@ export default function Home() {
     const [locketCaption, setLocketCaption] = useState('');
     const [isCameraOpen, setIsCameraOpen] = useState(false);
     const [capturedImage, setCapturedImage] = useState(null);
+    const [capturedVideo, setCapturedVideo] = useState(null);
+    const [isRecording, setIsRecording] = useState(false);
     const [commentInputs, setCommentInputs] = useState({});
     const [locketStream, setLocketStream] = useState(null);
+    const [isFrontCamera, setIsDcamFront] = useState(true);
     const desktopVideoRef = useRef(null);
     const mobileVideoRef = useRef(null);
+    const mediaRecorderRef = useRef(null);
+    const videoChunksRef = useRef([]);
 
     // 4. STATES: WebRTC & Call
     const [callStatus, setCallStatus] = useState('idle'); 
@@ -540,7 +545,6 @@ export default function Home() {
     // LOGIC XỬ LÝ MẠNG XÃ HỘI
     // ==========================================
     
-    // 1. Tải bảng tin
     const fetchFeed = async () => {
         if (!user) return;
         try {
@@ -548,30 +552,35 @@ export default function Home() {
             setPosts(res.data);
         } catch (err) { console.error("Lỗi tải bảng tin:", err); }
     };
-    useEffect(() => {
-        if (activeTab === 'locket') {
-            fetchFeed();
-        }
-    }, [activeTab]);
+    useEffect(() => { if (activeTab === 'locket') fetchFeed(); }, [activeTab]);
 
-    // 2. Mở Camera ống kính tròn 
-    const startLocketCamera = async () => {
+    // 2. Mở Camera (Có chức năng Lật)
+    const startLocketCamera = async (forceBack = false) => {
         setCapturedImage(null);
+        setCapturedVideo(null);
         setIsCameraOpen(true);
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480, facingMode: "user" }, audio: false });
+            const mode = forceBack ? { exact: "environment" } : "user";
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: 480, height: 480, facingMode: mode }, 
+                audio: true // Thêm âm thanh để quay video
+            });
             setLocketStream(stream);
-            setTimeout(() => {
-                // Nhồi video vào cả 2 ống hút
-                if (desktopVideoRef.current) desktopVideoRef.current.srcObject = stream;
-                if (mobileVideoRef.current) mobileVideoRef.current.srcObject = stream;
-            }, 100);
+
+            requestAnimationFrame(() => {
+                const video = window.innerWidth >= 768 ? desktopVideoRef.current : mobileVideoRef.current;
+                if (video) {
+                    video.srcObject = stream;
+                    video.play().catch(e => console.log("Auto-play bị chặn"));
+                }
+            });
         } catch (err) {
-            toast.error("Không thể truy cập Camera. Bạn có thể chọn file ảnh tải lên!");
+            console.error("Lỗi xin quyền Camera:", err);
+            toast.error("Không thể truy cập Camera. Kiểm tra cấp quyền!");
         }
     };
 
-    // 3. Tắt Camera
+    // 3. Tắt Camera an toàn
     const stopLocketCamera = () => {
         if (locketStream) {
             locketStream.getTracks().forEach(track => track.stop());
@@ -579,71 +588,122 @@ export default function Home() {
         }
         setIsCameraOpen(false);
         setCapturedImage(null);
+        setCapturedVideo(null);
     };
 
-    // 4. Bấm nút Chụp ảnh
+    // Theo dõi: Chuyển trang là TẮT NGAY CAMERA (Sửa lỗi mở tab khác cam vẫn chạy)
+    useEffect(() => {
+        if (activeTab !== 'locket' && isCameraOpen) stopLocketCamera();
+    }, [activeTab]);
+
+    const toggleDcamLens = () => {
+        stopLocketCamera();
+        setIsDcamFront(!isFrontCamera);
+        setTimeout(() => startLocketCamera(!isFrontCamera), 500);
+    };
+
+    // 4.1 Bấm nút Chụp ảnh
     const captureLocketPhoto = () => {
         const isDesktop = window.innerWidth >= 768;
         const video = isDesktop ? desktopVideoRef.current : mobileVideoRef.current;
-        if (!video) return;
+        if (!video || !video.srcObject) return;
+        
         const canvas = document.createElement('canvas');
         canvas.width = 480;
         canvas.height = 480;
         const ctx = canvas.getContext('2d');
-        ctx.translate(480, 0);
-        ctx.scale(-1, 1);
+        if (isFrontCamera) { ctx.translate(480, 0); ctx.scale(-1, 1); }
         ctx.drawImage(video, 0, 0, 480, 480);
-        const dataUrl = canvas.toDataURL('image/jpeg');
-        setCapturedImage(dataUrl);
-        if (locketStream) {
-            locketStream.getTracks().forEach(track => track.stop());
-            setLocketStream(null);
+        
+        setCapturedImage(canvas.toDataURL('image/jpeg'));
+        if (locketStream) locketStream.getTracks().forEach(track => track.stop());
+    };
+
+    // 4.2 Giữ nút để Quay Video 5s
+    const startRecording = () => {
+        if (!locketStream) return;
+        videoChunksRef.current = [];
+        const mediaRecorder = new MediaRecorder(locketStream);
+        mediaRecorderRef.current = mediaRecorder;
+
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) videoChunksRef.current.push(event.data);
+        };
+
+        mediaRecorder.onstop = () => {
+            const blob = new Blob(videoChunksRef.current, { type: 'video/mp4' });
+            setCapturedVideo(window.URL.createObjectURL(blob));
+            if (locketStream) locketStream.getTracks().forEach(track => track.stop());
+            setIsRecording(false);
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+
+        // Tự động ngắt sau 5 giây
+        setTimeout(() => {
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+                mediaRecorderRef.current.stop();
+            }
+        }, 5000);
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+            mediaRecorderRef.current.stop();
         }
     };
+
+    // 5. Đăng bài lên Dfeed (Hỗ trợ cả ảnh và Video)
     const handlePublishPost = async () => {
-        if (!capturedImage) return;
-        const loadingToast = toast.loading("Đang bắn ảnh lên Locket...");
+        if (!capturedImage && !capturedVideo) return;
+        const loadingToast = toast.loading("Đang bắn lên Dfeed...");
         try {
-            const response = await fetch(capturedImage);
+            const mediaUrl = capturedVideo || capturedImage;
+            const response = await fetch(mediaUrl);
             const blob = await response.blob();
             const formData = new FormData();
-            formData.append('file', blob, 'locket.jpg');
+            formData.append('file', blob, capturedVideo ? 'locket.mp4' : 'locket.jpg');
+            
             const uploadRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/upload', formData);
-            const imageUrl = uploadRes.data.url;
-
+            
             await axios.post('https://dlua-chat-api.onrender.com/api/posts/create', {
                 author: user.id,
-                imageUrl,
+                imageUrl: uploadRes.data.url, // Đổi sang nhận video
                 caption: locketCaption
             });
-            toast.success("Đã đăng khoảnh khắc thành công! ✨", { id: loadingToast });
+
+            toast.success("Khoảnh khắc đã lên sóng! ✨", { id: loadingToast });
             setLocketCaption('');
             stopLocketCamera();
             fetchFeed();
-        } catch (err) {
-            toast.error("Lỗi đăng ảnh rồi bạn ơi!", { id: loadingToast });
-        }
+        } catch (err) { toast.error("Đăng thất bại!", { id: loadingToast }); }
     };
 
-    // 6. Thả cảm xúc  bài viết
+    const handleDeletePost = async (postId) => {
+        if (!window.confirm("Bạn muốn xóa bài đăng này?")) return;
+        try {
+            await axios.delete(`https://dlua-chat-api.onrender.com/api/posts/delete/${postId}`, { data: { userId: user.id } });
+            setPosts(prev => prev.filter(p => p._id !== postId));
+            toast.success("Đã xóa bài đăng!");
+        } catch (err) { toast.error("Lỗi khi xóa bài"); }
+    };
+
     const handleReactPost = async (postId, emoji) => {
         try {
             const res = await axios.put(`https://dlua-chat-api.onrender.com/api/posts/react/${postId}`, { userId: user.id, emoji });
             setPosts(prev => prev.map(p => p._id === postId ? { ...p, reactions: res.data } : p));
-            // Phát socket thông báo (bước sau chúng ta sẽ làm kỹ phần socket này)
         } catch (err) { console.error(err); }
     };
 
-    // 7. Bình luận bài viết
     const handleCommentPost = async (e, postId) => {
         e.preventDefault();
         const text = commentInputs[postId];
         if (!text || !text.trim()) return;
-
         try {
             const res = await axios.post(`https://dlua-chat-api.onrender.com/api/posts/comment/${postId}`, { userId: user.id, text });
             setPosts(prev => prev.map(p => p._id === postId ? { ...p, comments: res.data } : p));
-            setCommentInputs(prev => ({ ...prev, [postId]: '' })); // Xóa trắng ô nhập sau khi gửi
+            setCommentInputs(prev => ({ ...prev, [postId]: '' }));
         } catch (err) { console.error(err); }
     };
 
@@ -1142,7 +1202,8 @@ export default function Home() {
     // 1. Khối Camera (Dcam)
     const renderDcamUI = (isMobileOverlay) => (
         <div className={`bg-slate-900 text-white flex flex-col items-center relative border border-slate-800 shadow-2xl ${isMobileOverlay ? 'w-full max-w-sm p-6 rounded-[40px] animate-fade-in' : 'w-full h-full p-6 rounded-[24px]'}`}>
-            {isMobileOverlay && <button onClick={stopLocketCamera} className="absolute top-5 right-5 text-slate-400 hover:text-white text-xl font-bold p-2 transition-colors z-10"><i className="ri-close-line text-2xl"></i></button>}
+            {/* THÊM DẤU X TẮT DCAM Ở CẢ PC VÀ MOBILE */}
+            <button onClick={stopLocketCamera} className="absolute top-5 right-5 text-slate-400 hover:text-red-500 text-2xl font-black p-2 transition-colors z-20"><i className="ri-close-line"></i></button>
             
             <div className="flex items-center gap-2 mb-6 w-full justify-center">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-400 to-orange-500 flex items-center justify-center text-white shadow-md"><i className="ri-camera-lens-line"></i></div>
@@ -1150,36 +1211,52 @@ export default function Home() {
             </div>
             
             {!isCameraOpen ? (
-                <button onClick={startLocketCamera} className="w-full flex-1 min-h-[300px] rounded-[32px] border-2 border-dashed border-slate-700 flex flex-col items-center justify-center gap-4 hover:bg-slate-800/50 transition-colors group">
+                <button onClick={() => startLocketCamera(false)} className="w-full flex-1 min-h-[300px] rounded-[32px] border-2 border-dashed border-slate-700 flex flex-col items-center justify-center gap-4 hover:bg-slate-800/50 transition-colors group">
                     <div className="w-16 h-16 rounded-full bg-amber-900/30 text-amber-500 flex items-center justify-center text-3xl group-hover:scale-110 transition-transform"><i className="ri-camera-fill"></i></div>
-                    <p className="text-sm font-bold text-slate-400">Bật Dcam để chụp ảnh</p>
+                    <p className="text-sm font-bold text-slate-400">Bật Dcam</p>
                 </button>
             ) : (
                 <>
-                    <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
-                        {!capturedImage ? (
+                    <div className={`w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center transition-all ${isRecording ? 'border-red-500 scale-105' : ''}`}>
+                        {!capturedImage && !capturedVideo ? (
                             <video 
                                 ref={(el) => {
                                     if (isMobileOverlay) mobileVideoRef.current = el;
                                     else desktopVideoRef.current = el;
-                                    if (el && locketStream && el.srcObject !== locketStream) {
-                                        el.srcObject = locketStream;
-                                    }
+                                    if (el && locketStream && el.srcObject !== locketStream) el.srcObject = locketStream;
                                 }} 
                                 autoPlay playsInline muted 
-                                className="w-full h-full object-cover transform scale-x-[-1]" 
+                                className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} 
                             />
+                        ) : capturedVideo ? (
+                            <video src={capturedVideo} autoPlay loop playsInline className="w-full h-full object-cover" />
                         ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
+                        
+                        {/* Hiển thị đếm ngược khi quay */}
+                        {isRecording && <div className="absolute top-4 right-4 w-4 h-4 bg-red-500 rounded-full animate-ping"></div>}
                     </div>
 
-                    {!capturedImage ? (
-                        <button onClick={captureLocketPhoto} className="w-16 h-16 bg-white hover:bg-slate-200 border-4 border-slate-700 rounded-full mt-8 shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-90 transition-all flex items-center justify-center group"><div className="w-12 h-12 rounded-full border-[3px] border-slate-300 group-hover:border-slate-400 transition-colors"></div></button>
+                    {!capturedImage && !capturedVideo ? (
+                        <div className="flex gap-6 items-center mt-8">
+                            <div className="w-10"></div> {/* Spacer để cân bằng */}
+                            {/* Nút chụp: Chạm để chụp, Giữ để quay */}
+                            <button 
+                                onMouseDown={startRecording} onMouseUp={stopRecording}
+                                onTouchStart={startRecording} onTouchEnd={stopRecording}
+                                onClick={captureLocketPhoto} 
+                                className="w-16 h-16 bg-white hover:bg-slate-200 border-4 border-slate-700 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-90 transition-all flex items-center justify-center group"
+                            >
+                                <div className={`w-12 h-12 rounded-full border-[3px] border-slate-300 transition-colors ${isRecording ? 'bg-red-500 border-red-400' : 'group-hover:border-slate-400'}`}></div>
+                            </button>
+                            {/* Nút lật Camera */}
+                            <button onClick={toggleDcamLens} className="w-10 h-10 bg-slate-800 text-slate-300 rounded-full text-lg hover:bg-slate-700 hover:text-white transition-all"><i className="ri-refresh-line"></i></button>
+                        </div>
                     ) : (
                         <div className="w-full mt-6 space-y-3 px-2">
                             <input type="text" placeholder="Thêm mô tả cho Dfeed..." value={locketCaption} onChange={(e) => setLocketCaption(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-3 px-4 text-sm outline-none text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder-slate-500" />
                             <div className="flex gap-3">
-                                <button onClick={handlePublishPost} className="flex-1 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold py-3 rounded-2xl text-sm shadow-lg active:scale-95 transition-all">🚀 Đăng lên Dfeed</button>
-                                <button onClick={startLocketCamera} className="w-12 h-12 shrink-0 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl text-lg transition-colors flex items-center justify-center"><i className="ri-refresh-line"></i></button>
+                                <button onClick={handlePublishPost} className="flex-1 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold py-3 rounded-2xl text-sm shadow-lg active:scale-95 transition-all">🚀 Đăng lên</button>
+                                <button onClick={() => startLocketCamera(false)} className="w-12 h-12 shrink-0 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl text-lg transition-colors flex items-center justify-center"><i className="ri-delete-bin-line"></i></button>
                             </div>
                         </div>
                     )}
@@ -1191,51 +1268,65 @@ export default function Home() {
     // 2. Khối Danh sách Bảng tin (Dfeed)
     const renderDfeedPosts = () => {
         if (posts.length === 0) return <div className="text-center text-slate-400 text-[14px] py-20 w-full font-medium flex flex-col items-center gap-4"><div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center"><i className="ri-image-circle-line text-4xl text-slate-300 dark:text-slate-600"></i></div>Chưa có khoảnh khắc nào. Hãy là người đầu tiên!</div>;
-        return posts.map(post => (
-            <div key={post._id} className="bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-700/50 rounded-[32px] shadow-sm overflow-hidden flex flex-col mb-8 w-full transition-colors">
-                <div className="flex items-center gap-3 p-4 md:p-5">
-                    <div className="w-10 h-10 bg-gradient-to-tr from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-600 rounded-full overflow-hidden font-bold flex items-center justify-center text-sm text-slate-600 dark:text-slate-300 shadow-inner border border-slate-100 dark:border-slate-600">
-                        {post.author?.avatar ? <img src={post.author.avatar} className="w-full h-full object-cover"/> : post.author?.fullName[0]}
-                    </div>
-                    <div>
-                        <p className="font-bold text-[14px] md:text-[15px] text-slate-800 dark:text-white leading-tight">{post.author?.fullName}</p>
-                        <p className="text-[11px] text-blue-500 dark:text-blue-400 font-medium">@{post.author?.uniqueName}</p>
-                    </div>
-                    <div className="ml-auto text-[11px] text-slate-400 font-medium">{new Date(post.createdAt).toLocaleDateString('vi-VN')}</div>
-                </div>
-                <div className="w-full aspect-square bg-slate-100 dark:bg-slate-900 overflow-hidden relative group">
-                    <img src={post.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" alt="dfeed-post"/>
-                </div>
-                <div className="p-4 md:p-5 flex flex-col gap-3">
-                    <div className="flex items-center gap-4 text-[28px] md:text-[32px] text-slate-700 dark:text-slate-300">
-                        <button onClick={() => handleReactPost(post._id, '❤️')} className="active:scale-75 transition-transform hover:opacity-80">
-                            {post.reactions?.some(r => r.userId === user.id) ? '❤️' : '🤍'}
-                        </button>
-                        <i className="ri-chat-3-line hover:opacity-80 cursor-pointer"></i>
-                        <i className="ri-send-plane-line hover:opacity-80 cursor-pointer ml-auto"></i>
-                    </div>
-                    <span className="text-[13px] font-black text-slate-800 dark:text-white">{post.reactions?.length || 0} lượt thích</span>
-                    {post.caption && (
-                        <p className="text-[14px] text-slate-700 dark:text-slate-200 break-words leading-relaxed mt-1">
-                            <span className="font-black text-slate-900 dark:text-white mr-2">{post.author?.fullName}</span>{post.caption}
-                        </p>
-                    )}
-                    {post.comments && post.comments.length > 0 && (
-                        <div className="mt-2 space-y-2 max-h-32 overflow-y-auto scrollbar-hide py-1">
-                            {post.comments.map((c, i) => (
-                                <div key={i} className="text-[13px] text-slate-600 dark:text-slate-300 break-words leading-relaxed">
-                                    <span className="font-bold text-slate-800 dark:text-white mr-2">{c.userId?.fullName}</span>{c.text}
-                                </div>
-                            ))}
+        return posts.map(post => {
+            // Xác định xem URL có phải là Video hay không (Dựa vào đuôi .mp4/webm)
+            const isVideo = post.imageUrl && (post.imageUrl.includes('.mp4') || post.imageUrl.includes('.webm'));
+            return (
+                <div key={post._id} className="bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-700/50 rounded-[32px] shadow-sm overflow-hidden flex flex-col mb-8 w-full transition-colors">
+                    <div className="flex items-center gap-3 p-4 md:p-5 relative">
+                        <div className="w-10 h-10 bg-gradient-to-tr from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-600 rounded-full overflow-hidden font-bold flex items-center justify-center text-sm text-slate-600 dark:text-slate-300 shadow-inner border border-slate-100 dark:border-slate-600">
+                            {post.author?.avatar ? <img src={post.author.avatar} className="w-full h-full object-cover"/> : post.author?.fullName[0]}
                         </div>
-                    )}
-                    <form onSubmit={(e) => handleCommentPost(e, post._id)} className="flex items-center gap-3 mt-3">
-                        <input type="text" placeholder="Thêm bình luận..." value={commentInputs[post._id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post._id]: e.target.value })} className="flex-1 bg-transparent text-[14px] outline-none text-slate-700 dark:text-slate-200 placeholder-slate-400 font-medium" />
-                        {commentInputs[post._id]?.trim() && <button type="submit" className="text-blue-500 font-bold text-[13px] hover:text-blue-600 active:scale-95">Đăng</button>}
-                    </form>
+                        <div>
+                            <p className="font-bold text-[14px] md:text-[15px] text-slate-800 dark:text-white leading-tight">{post.author?.fullName}</p>
+                            <p className="text-[11px] text-blue-500 dark:text-blue-400 font-medium">@{post.author?.uniqueName}</p>
+                        </div>
+                        <div className="ml-auto flex items-center gap-2">
+                            <span className="text-[11px] text-slate-400 font-medium">{new Date(post.createdAt).toLocaleDateString('vi-VN')}</span>
+                            {/* NÚT XÓA: CHỈ HIỆN KHI MÌNH LÀ CHỦ BÀI */}
+                            {post.author?._id === user.id && (
+                                <button onClick={() => handleDeletePost(post._id)} className="text-slate-300 hover:text-red-500 transition-colors p-1"><i className="ri-delete-bin-line text-lg"></i></button>
+                            )}
+                        </div>
+                    </div>
+                    <div className="w-full aspect-square bg-slate-100 dark:bg-slate-900 overflow-hidden relative group flex items-center justify-center">
+                        {isVideo ? (
+                            <video src={post.imageUrl} controls autoPlay loop muted playsInline className="w-full h-full object-cover" />
+                        ) : (
+                            <img src={post.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" alt="dfeed-post"/>
+                        )}
+                    </div>
+                    <div className="p-4 md:p-5 flex flex-col gap-3">
+                        <div className="flex items-center gap-4 text-[28px] md:text-[32px] text-slate-700 dark:text-slate-300">
+                            <button onClick={() => handleReactPost(post._id, '❤️')} className="active:scale-75 transition-transform hover:opacity-80">
+                                {post.reactions?.some(r => r.userId === user.id) ? '❤️' : '🤍'}
+                            </button>
+                            <i className="ri-chat-3-line hover:opacity-80 cursor-pointer"></i>
+                            <i className="ri-send-plane-line hover:opacity-80 cursor-pointer ml-auto"></i>
+                        </div>
+                        <span className="text-[13px] font-black text-slate-800 dark:text-white">{post.reactions?.length || 0} lượt thích</span>
+                        {post.caption && (
+                            <p className="text-[14px] text-slate-700 dark:text-slate-200 break-words leading-relaxed mt-1">
+                                <span className="font-black text-slate-900 dark:text-white mr-2">{post.author?.fullName}</span>{post.caption}
+                            </p>
+                        )}
+                        {post.comments && post.comments.length > 0 && (
+                            <div className="mt-2 space-y-2 max-h-32 overflow-y-auto scrollbar-hide py-1">
+                                {post.comments.map((c, i) => (
+                                    <div key={i} className="text-[13px] text-slate-600 dark:text-slate-300 break-words leading-relaxed">
+                                        <span className="font-bold text-slate-800 dark:text-white mr-2">{c.userId?.fullName}</span>{c.text}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        <form onSubmit={(e) => handleCommentPost(e, post._id)} className="flex items-center gap-3 mt-3">
+                            <input type="text" placeholder="Thêm bình luận..." value={commentInputs[post._id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post._id]: e.target.value })} className="flex-1 bg-transparent text-[14px] outline-none text-slate-700 dark:text-slate-200 placeholder-slate-400 font-medium" />
+                            {commentInputs[post._id]?.trim() && <button type="submit" className="text-blue-500 font-bold text-[13px] hover:text-blue-600 active:scale-95">Đăng</button>}
+                        </form>
+                    </div>
                 </div>
-            </div>
-        ));
+            );
+        });
     };
 
     // ==========================================
@@ -1262,33 +1353,24 @@ export default function Home() {
                                     link.click();
                                     document.body.removeChild(link);
                                     window.URL.revokeObjectURL(blobUrl);
-                                } catch (error) {
-                                    window.open(viewingMedia.url, '_blank');
-                                }
+                                } catch (error) { window.open(viewingMedia.url, '_blank'); }
                             }} 
-                            className="text-white bg-white/20 hover:bg-white/40 p-3 rounded-full transition-all flex items-center justify-center w-12 h-12"
-                            title="Tải xuống"
+                            className="text-white bg-white/20 hover:bg-white/40 p-3 rounded-full transition-all flex items-center justify-center w-12 h-12" title="Tải xuống"
                         >
                             <i className="ri-download-2-fill text-2xl"></i>
                         </button>
                         <button 
                             onClick={() => setViewingMedia(null)} 
-                            className="text-white bg-white/20 hover:bg-red-500 p-3 rounded-full transition-all flex items-center justify-center w-12 h-12"
-                            title="Đóng"
+                            className="text-white bg-white/20 hover:bg-red-500 p-3 rounded-full transition-all flex items-center justify-center w-12 h-12" title="Đóng"
                         >
                             <i className="ri-close-line text-3xl"></i>
                         </button>
                     </div>
-                    
-                    {viewingMedia.type === 'image' ? (
-                        <img src={viewingMedia.url} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-fade-in" />
-                    ) : (
-                        <video src={viewingMedia.url} controls autoPlay className="max-w-full max-h-full rounded-lg shadow-2xl animate-fade-in" />
-                    )}
+                    {viewingMedia.type === 'image' ? ( <img src={viewingMedia.url} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-fade-in" /> ) : ( <video src={viewingMedia.url} controls autoPlay className="max-w-full max-h-full rounded-lg shadow-2xl animate-fade-in" /> )}
                 </div>
             )}
 
-            {/* LỚP PHỦ CUỘC GỌI */}
+            {/* LỚP PHỦ CUỘC GỌI GIỮ NGUYÊN Y CŨ */}
             {callStatus !== 'idle' && (
                 <div className="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center backdrop-blur-md overflow-hidden touch-none">
                     {callStatus === 'ringing' && (
@@ -1304,7 +1386,6 @@ export default function Home() {
                             </div>
                         </div>
                     )}
-
                     {(callStatus === 'calling' || callStatus === 'active') && (
                         <div className="flex flex-col items-center w-full h-full relative">
                             {callStatus === 'calling' && (
@@ -1313,7 +1394,6 @@ export default function Home() {
                                     <h2 className="text-white text-3xl md:text-4xl font-bold mt-2 drop-shadow-lg">{callData?.name}</h2>
                                 </div>
                             )}
-
                             <div className="w-full h-full relative">
                                 {callData?.type === 'video' ? (
                                     <div className="w-full h-full bg-black relative flex items-center justify-center">
@@ -1337,7 +1417,6 @@ export default function Home() {
                                     </div>
                                 )}
                             </div>
-
                             <div className="absolute bottom-10 md:bottom-12 flex gap-4 md:gap-6 items-center bg-slate-900/60 md:bg-slate-800/80 px-6 py-3 md:px-8 md:py-4 rounded-full backdrop-blur-xl z-20 shadow-2xl border border-white/10">
                                 <button onClick={toggleAudio} className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center text-xl md:text-2xl transition-all shadow-lg ${isMuted ? 'bg-white text-slate-900' : 'bg-slate-700/80 text-white hover:bg-slate-600'}`} title="Bật/Tắt Micro">{isMuted ? '🔇' : '🎤'}</button>
                                 {callData?.type === 'video' && (
@@ -1354,7 +1433,7 @@ export default function Home() {
                 </div>
             )}
 
-            {/* THANH MENU DỌC MÁY TÍNH (GIỐNG ẢNH BẠN GỬI) */}
+            {/* THANH MENU DỌC MÁY TÍNH MỚI */}
             <div className="hidden md:flex w-20 bg-[#0b1426] dark:bg-slate-950 rounded-[32px] flex-col items-center py-8 justify-between shadow-xl shrink-0 z-10 transition-colors">
                 <div className="flex flex-col gap-5 items-center w-full">
                     <div onClick={() => setActiveTab('profile')} className={`w-[46px] h-[46px] rounded-full flex items-center justify-center text-white font-bold text-lg cursor-pointer shadow-lg overflow-hidden transition-all border-[3px] ${activeTab === 'profile' ? 'border-blue-500' : 'border-transparent hover:scale-105'}`}>{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" alt="avatar" /> : user.fullName[0]}</div>
@@ -1367,19 +1446,15 @@ export default function Home() {
                         <i className="ri-user-smile-fill text-[24px]"></i>
                         {pendingRequests.length > 0 && <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0b1426] animate-pulse"></span>}
                     </button>
-                    
-                    {/* NÚT DFEED VỚI ICON INSTAGRAM */}
                     <button onClick={() => { setActiveTab('locket'); setCurrentChat(null); }} className={`relative w-[46px] h-[46px] rounded-[18px] flex items-center justify-center transition-all ${activeTab === 'locket' ? 'bg-[#3b4758] text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/5'}`} title="Dfeed">
                         <i className={`text-[26px] ${activeTab === 'locket' ? 'ri-instagram-fill text-amber-500' : 'ri-instagram-line'}`}></i>
                     </button>
-
                     <button onClick={() => setActiveTab('groups')} className={`w-[46px] h-[46px] rounded-[18px] flex items-center justify-center transition-all ${activeTab === 'groups' ? 'bg-[#3b4758] text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/5'}`} title="Nhóm"><i className="ri-group-fill text-[24px]"></i></button>
                     <div className="w-8 h-[1px] bg-slate-700/50 my-2"></div>
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-[46px] h-[46px] rounded-[18px] flex items-center justify-center text-slate-400 hover:text-yellow-400 hover:bg-white/5 transition-all" title="Giao diện">
                         <i className={`text-[24px] ${isDarkMode ? 'ri-sun-fill text-yellow-400' : 'ri-moon-fill'}`}></i>
                     </button>
                 </div>
-                
                 <div className="flex flex-col gap-4 items-center">
                     {isInstallable && (
                         <button onClick={handleInstallClick} className="w-[46px] h-[46px] rounded-[18px] flex items-center justify-center text-emerald-400 hover:text-white bg-emerald-400/10 hover:bg-emerald-500 transition-all shadow-md" title="Cài đặt App">
@@ -1555,7 +1630,7 @@ export default function Home() {
                                     {renderDfeedPosts()}
                                 </div>
                                 {/* NÚT BẤM NỔI (FAB) MỞ CAMERA DÀNH CHO MOBILE */}
-                                <button onClick={startLocketCamera} className="fixed bottom-24 right-6 w-14 h-14 bg-gradient-to-r from-amber-500 to-orange-600 hover:scale-105 rounded-full shadow-[0_10px_25px_rgba(245,158,11,0.5)] flex items-center justify-center text-white text-2xl active:scale-90 transition-transform z-40">
+                                <button onClick={() => startLocketCamera(false)} className="fixed bottom-24 right-6 w-14 h-14 bg-gradient-to-r from-amber-500 to-orange-600 hover:scale-105 rounded-full shadow-[0_10px_25px_rgba(245,158,11,0.5)] flex items-center justify-center text-white text-2xl active:scale-90 transition-transform z-40">
                                     <i className="ri-camera-fill"></i>
                                 </button>
                             </div>

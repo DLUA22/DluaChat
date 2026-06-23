@@ -69,3 +69,17 @@ exports.commentOnPost = async (req, res) => {
         res.status(200).json(post.comments);
     } catch (error) { res.status(500).json({ message: "Lỗi bình luận" }); }
 };
+
+exports.deletePost = async (req, res) => {
+    try {
+        const { postId } = req.params;
+        const { userId } = req.body;
+        const post = await Post.findById(postId);
+        if (!post) return res.status(404).json({ message: "Bài viết không tồn tại!" });
+        if (post.author.toString() !== userId) {
+            return res.status(403).json({ message: "Không có quyền xóa bài này!" });
+        }
+        await Post.findByIdAndDelete(postId);
+        res.status(200).json({ message: "Đã xóa thành công!" });
+    } catch (error) { res.status(500).json({ message: "Lỗi xóa bài đăng" }); }
+};

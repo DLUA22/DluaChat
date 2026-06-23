@@ -1135,7 +1135,98 @@ export default function Home() {
     const isLastMessageRead = lastMessage && getSenderId(lastMessage.senderId) === user.id && (
         (lastMessage.readBy && lastMessage.readBy.length > 0) || lastMessage.isRead
     );
+    // 1. Khối Camera (Dcam)
+    const renderDcamUI = (isMobileOverlay) => (
+        <div className={`bg-slate-900 text-white flex flex-col items-center relative border border-slate-800 shadow-2xl ${isMobileOverlay ? 'w-full max-w-sm p-6 rounded-[40px] animate-fade-in' : 'w-full h-full p-6 rounded-[24px]'}`}>
+            {isMobileOverlay && <button onClick={stopLocketCamera} className="absolute top-5 right-5 text-slate-400 hover:text-white text-xl font-bold p-2 transition-colors z-10"><i className="ri-close-line text-2xl"></i></button>}
+            
+            <div className="flex items-center gap-2 mb-6 w-full justify-center">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-400 to-orange-500 flex items-center justify-center text-white shadow-md"><i className="ri-camera-lens-line"></i></div>
+                <p className="text-sm font-black tracking-widest bg-clip-text text-transparent bg-gradient-to-r from-amber-400 to-orange-500">DCAM</p>
+            </div>
+            
+            {!isCameraOpen ? (
+                <button onClick={startLocketCamera} className="w-full flex-1 min-h-[300px] rounded-[32px] border-2 border-dashed border-slate-700 flex flex-col items-center justify-center gap-4 hover:bg-slate-800/50 transition-colors group">
+                    <div className="w-16 h-16 rounded-full bg-amber-900/30 text-amber-500 flex items-center justify-center text-3xl group-hover:scale-110 transition-transform"><i className="ri-camera-fill"></i></div>
+                    <p className="text-sm font-bold text-slate-400">Bật Dcam để chụp ảnh</p>
+                </button>
+            ) : (
+                <>
+                    <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
+                        {!capturedImage ? (
+                            <video ref={locketVideoRef} autoPlay playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
+                        ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
+                    </div>
 
+                    {!capturedImage ? (
+                        <button onClick={captureLocketPhoto} className="w-16 h-16 bg-white hover:bg-slate-200 border-4 border-slate-700 rounded-full mt-8 shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-90 transition-all flex items-center justify-center group"><div className="w-12 h-12 rounded-full border-[3px] border-slate-300 group-hover:border-slate-400 transition-colors"></div></button>
+                    ) : (
+                        <div className="w-full mt-6 space-y-3 px-2">
+                            <input type="text" placeholder="Thêm mô tả cho Dfeed..." value={locketCaption} onChange={(e) => setLocketCaption(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-3 px-4 text-sm outline-none text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder-slate-500" />
+                            <div className="flex gap-3">
+                                <button onClick={handlePublishPost} className="flex-1 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold py-3 rounded-2xl text-sm shadow-lg active:scale-95 transition-all">🚀 Đăng lên Dfeed</button>
+                                <button onClick={startLocketCamera} className="w-12 h-12 shrink-0 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl text-lg transition-colors flex items-center justify-center"><i className="ri-refresh-line"></i></button>
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+
+    // 2. Khối Danh sách Bảng tin (Dfeed)
+    const renderDfeedPosts = () => {
+        if (posts.length === 0) return <div className="text-center text-slate-400 text-[14px] py-20 w-full font-medium flex flex-col items-center gap-4"><div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center"><i className="ri-image-circle-line text-4xl text-slate-300 dark:text-slate-600"></i></div>Chưa có khoảnh khắc nào. Hãy là người đầu tiên!</div>;
+        return posts.map(post => (
+            <div key={post._id} className="bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-700/50 rounded-[32px] shadow-sm overflow-hidden flex flex-col mb-8 w-full transition-colors">
+                <div className="flex items-center gap-3 p-4 md:p-5">
+                    <div className="w-10 h-10 bg-gradient-to-tr from-blue-50 to-indigo-50 dark:from-slate-700 dark:to-slate-600 rounded-full overflow-hidden font-bold flex items-center justify-center text-sm text-slate-600 dark:text-slate-300 shadow-inner border border-slate-100 dark:border-slate-600">
+                        {post.author?.avatar ? <img src={post.author.avatar} className="w-full h-full object-cover"/> : post.author?.fullName[0]}
+                    </div>
+                    <div>
+                        <p className="font-bold text-[14px] md:text-[15px] text-slate-800 dark:text-white leading-tight">{post.author?.fullName}</p>
+                        <p className="text-[11px] text-blue-500 dark:text-blue-400 font-medium">@{post.author?.uniqueName}</p>
+                    </div>
+                    <div className="ml-auto text-[11px] text-slate-400 font-medium">{new Date(post.createdAt).toLocaleDateString('vi-VN')}</div>
+                </div>
+                <div className="w-full aspect-square bg-slate-100 dark:bg-slate-900 overflow-hidden relative group">
+                    <img src={post.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" alt="dfeed-post"/>
+                </div>
+                <div className="p-4 md:p-5 flex flex-col gap-3">
+                    <div className="flex items-center gap-4 text-[28px] md:text-[32px] text-slate-700 dark:text-slate-300">
+                        <button onClick={() => handleReactPost(post._id, '❤️')} className="active:scale-75 transition-transform hover:opacity-80">
+                            {post.reactions?.some(r => r.userId === user.id) ? '❤️' : '🤍'}
+                        </button>
+                        <i className="ri-chat-3-line hover:opacity-80 cursor-pointer"></i>
+                        <i className="ri-send-plane-line hover:opacity-80 cursor-pointer ml-auto"></i>
+                    </div>
+                    <span className="text-[13px] font-black text-slate-800 dark:text-white">{post.reactions?.length || 0} lượt thích</span>
+                    {post.caption && (
+                        <p className="text-[14px] text-slate-700 dark:text-slate-200 break-words leading-relaxed mt-1">
+                            <span className="font-black text-slate-900 dark:text-white mr-2">{post.author?.fullName}</span>{post.caption}
+                        </p>
+                    )}
+                    {post.comments && post.comments.length > 0 && (
+                        <div className="mt-2 space-y-2 max-h-32 overflow-y-auto scrollbar-hide py-1">
+                            {post.comments.map((c, i) => (
+                                <div key={i} className="text-[13px] text-slate-600 dark:text-slate-300 break-words leading-relaxed">
+                                    <span className="font-bold text-slate-800 dark:text-white mr-2">{c.userId?.fullName}</span>{c.text}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <form onSubmit={(e) => handleCommentPost(e, post._id)} className="flex items-center gap-3 mt-3">
+                        <input type="text" placeholder="Thêm bình luận..." value={commentInputs[post._id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post._id]: e.target.value })} className="flex-1 bg-transparent text-[14px] outline-none text-slate-700 dark:text-slate-200 placeholder-slate-400 font-medium" />
+                        {commentInputs[post._id]?.trim() && <button type="submit" className="text-blue-500 font-bold text-[13px] hover:text-blue-600 active:scale-95">Đăng</button>}
+                    </form>
+                </div>
+            </div>
+        ));
+    };
+
+    // ==========================================
+    // RENDER LÕI
+    // ==========================================
     return (
         <motion.div onClick={() => setActiveMenuId(null)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-[100dvh] bg-[#f0f4f8] dark:bg-slate-900 p-0 md:p-6 md:gap-6 font-['Be_Vietnam_Pro'] relative transition-colors duration-300 overflow-hidden">
             <Toaster position="top-center" />
@@ -1249,38 +1340,44 @@ export default function Home() {
                 </div>
             )}
 
-            {/* THANH MENU */}
-            <div className="hidden md:flex w-20 bg-[#0a192f] dark:bg-slate-950 rounded-[32px] flex-col items-center py-8 justify-between shadow-xl shrink-0 z-10 transition-colors">
-                <div className="flex flex-col gap-6 items-center w-full">
-                    <div onClick={() => setActiveTab('profile')} className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-xl cursor-pointer shadow-lg overflow-hidden transition-all ${activeTab === 'profile' ? 'ring-4 ring-blue-500 bg-blue-600' : 'bg-blue-500 hover:scale-105'}`}>{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" alt="avatar" /> : user.fullName[0]}</div>
-                    <div className="w-8 h-[1px] bg-slate-700 my-2"></div>
-                    <button onClick={() => setActiveTab('chat')} className={`relative w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'chat' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Trò chuyện">
-                        <i className="ri-chat-3-fill text-2xl"></i>
-                        {Object.values(unreadCounts).some(c => c > 0) && <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0a192f] animate-pulse"></span>}
+            {/* THANH MENU DỌC MÁY TÍNH (GIỐNG ẢNH BẠN GỬI) */}
+            <div className="hidden md:flex w-20 bg-[#0b1426] dark:bg-slate-950 rounded-[32px] flex-col items-center py-8 justify-between shadow-xl shrink-0 z-10 transition-colors">
+                <div className="flex flex-col gap-5 items-center w-full">
+                    <div onClick={() => setActiveTab('profile')} className={`w-[46px] h-[46px] rounded-full flex items-center justify-center text-white font-bold text-lg cursor-pointer shadow-lg overflow-hidden transition-all border-[3px] ${activeTab === 'profile' ? 'border-blue-500' : 'border-transparent hover:scale-105'}`}>{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" alt="avatar" /> : user.fullName[0]}</div>
+                    <div className="w-8 h-[1px] bg-slate-700/50 my-2"></div>
+                    <button onClick={() => setActiveTab('chat')} className={`relative w-[46px] h-[46px] rounded-[18px] flex items-center justify-center transition-all ${activeTab === 'chat' ? 'bg-[#3b4758] text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/5'}`} title="Trò chuyện">
+                        <i className="ri-chat-3-fill text-[24px]"></i>
+                        {Object.values(unreadCounts).some(c => c > 0) && <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0b1426] animate-pulse"></span>}
                     </button>
-                    <button onClick={() => setActiveTab('friends')} className={`relative w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'friends' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Bạn bè">
-                        <i className="ri-user-smile-fill text-2xl"></i>
-                        {pendingRequests.length > 0 && <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0a192f] animate-pulse"></span>}
+                    <button onClick={() => setActiveTab('friends')} className={`relative w-[46px] h-[46px] rounded-[18px] flex items-center justify-center transition-all ${activeTab === 'friends' ? 'bg-[#3b4758] text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/5'}`} title="Bạn bè">
+                        <i className="ri-user-smile-fill text-[24px]"></i>
+                        {pendingRequests.length > 0 && <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0b1426] animate-pulse"></span>}
                     </button>
-                    <button onClick={() => setActiveTab('locket')} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'locket' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Khoảnh khắc Locket">
-                        <i className="ri-instagram-line text-2xl"></i>
+                    
+                    {/* NÚT DFEED VỚI ICON INSTAGRAM */}
+                    <button onClick={() => { setActiveTab('locket'); setCurrentChat(null); }} className={`relative w-[46px] h-[46px] rounded-[18px] flex items-center justify-center transition-all ${activeTab === 'locket' ? 'bg-[#3b4758] text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/5'}`} title="Dfeed">
+                        <i className={`text-[26px] ${activeTab === 'locket' ? 'ri-instagram-fill text-amber-500' : 'ri-instagram-line'}`}></i>
                     </button>
-                    <button onClick={() => setActiveTab('groups')} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'groups' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Nhóm"><i className="ri-group-fill text-2xl"></i></button>
-                    <div className="w-8 h-[1px] bg-slate-700 my-2"></div>
-                    <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-12 h-12 rounded-2xl flex items-center justify-center text-slate-400 hover:text-yellow-400 hover:bg-white/10 transition-all" title="Giao diện">
-                        <i className={`text-2xl ${isDarkMode ? 'ri-sun-fill text-yellow-400' : 'ri-moon-fill'}`}></i>
+
+                    <button onClick={() => setActiveTab('groups')} className={`w-[46px] h-[46px] rounded-[18px] flex items-center justify-center transition-all ${activeTab === 'groups' ? 'bg-[#3b4758] text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/5'}`} title="Nhóm"><i className="ri-group-fill text-[24px]"></i></button>
+                    <div className="w-8 h-[1px] bg-slate-700/50 my-2"></div>
+                    <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-[46px] h-[46px] rounded-[18px] flex items-center justify-center text-slate-400 hover:text-yellow-400 hover:bg-white/5 transition-all" title="Giao diện">
+                        <i className={`text-[24px] ${isDarkMode ? 'ri-sun-fill text-yellow-400' : 'ri-moon-fill'}`}></i>
                     </button>
                 </div>
-                {isInstallable && (
-                    <button onClick={handleInstallClick} className="w-12 h-12 rounded-2xl flex items-center justify-center text-emerald-400 hover:text-white bg-emerald-400/10 hover:bg-emerald-500 transition-all mb-2 shadow-[0_0_15px_rgba(52,211,153,0.2)]" title="Cài đặt App">
-                        <i className="ri-download-cloud-2-fill text-2xl"></i>
-                    </button>
-                )}
-                <button onClick={handleLogout} className="text-red-400 hover:text-red-300 p-3 bg-red-400/10 rounded-2xl transition-all hover:bg-red-400/20"><i className="ri-logout-box-r-line text-2xl"></i></button>
+                
+                <div className="flex flex-col gap-4 items-center">
+                    {isInstallable && (
+                        <button onClick={handleInstallClick} className="w-[46px] h-[46px] rounded-[18px] flex items-center justify-center text-emerald-400 hover:text-white bg-emerald-400/10 hover:bg-emerald-500 transition-all shadow-md" title="Cài đặt App">
+                            <i className="ri-download-cloud-2-fill text-[24px]"></i>
+                        </button>
+                    )}
+                    <button onClick={handleLogout} className="text-red-400 hover:text-red-300 w-[46px] h-[46px] bg-red-400/10 rounded-[18px] transition-all hover:bg-red-400/20 flex items-center justify-center"><i className="ri-logout-box-r-line text-[24px]"></i></button>
+                </div>
             </div>
 
-            {/* SIDEBAR */}
-            <div className={`w-full md:w-[340px] bg-white dark:bg-slate-800 md:rounded-[32px] shadow-sm flex-col overflow-hidden border-r md:border border-slate-100 dark:border-slate-700 shrink-0 z-10 transition-colors pb-[70px] md:pb-0 ${currentChat ? 'hidden md:flex' : 'flex'}`}>
+            {/* SIDEBAR TRÁI */}
+            <div className={`w-full md:w-[360px] bg-white dark:bg-slate-800 md:rounded-[32px] shadow-sm flex-col overflow-hidden border-r md:border border-slate-100 dark:border-slate-700 shrink-0 z-10 transition-colors pb-[70px] md:pb-0 ${currentChat ? 'hidden md:flex' : 'flex'}`}>
                 <div className="p-6 pt-8 md:pt-6 overflow-y-auto h-full scrollbar-hide">
                     {activeTab === 'chat' && (
                         <>
@@ -1368,110 +1465,6 @@ export default function Home() {
                             </div>
                         </>
                     )}
-                    {activeTab === 'locket' && (
-                        <div className="w-full h-full flex flex-col pb-4 animate-fade-in">
-                            <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Khoảnh khắc</h2>
-                                <button onClick={startLocketCamera} className="bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700 text-white font-bold text-xs px-4 py-2.5 rounded-2xl flex items-center gap-2 shadow-md shadow-amber-500/20 active:scale-95 transition-all">
-                                    📸 Chụp ảnh
-                                </button>
-                            </div>
-
-                            {/* BANNER CAMERA CHỤP ẢNH LOCKET (BUNG RA KHI BẤM NÚT CHỤP) */}
-                            {isCameraOpen && (
-                                <div className="bg-slate-900 text-white p-5 rounded-[28px] mb-6 border border-slate-800 flex flex-col items-center relative shadow-xl">
-                                    <button onClick={stopLocketCamera} className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold">✕</button>
-                                    <p className="text-[11px] font-bold text-amber-400 uppercase tracking-widest mb-4">Ống kính Locket</p>
-                                    
-                                    {/* Khung Live Video / Khung Xem ảnh hình tròn chuẩn locket */}
-                                    <div className="w-56 h-56 rounded-full overflow-hidden bg-black border-4 border-amber-500 shadow-inner relative flex items-center justify-center">
-                                        {!capturedImage ? (
-                                            <video ref={locketVideoRef} autoPlay playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
-                                        ) : (
-                                            <img src={capturedImage} className="w-full h-full object-cover" />
-                                        )}
-                                    </div>
-
-                                    {/* Bộ điều khiển chụp / đăng bài */}
-                                    {!capturedImage ? (
-                                        <button onClick={captureLocketPhoto} className="w-14 h-14 bg-white hover:bg-slate-200 border-4 border-slate-700 rounded-full mt-5 shadow-lg active:scale-90 transition-all flex items-center justify-center text-2xl">📸</button>
-                                    ) : (
-                                        <div className="w-full mt-4 space-y-3">
-                                            <input type="text" placeholder="Viết dòng trạng thái (caption)..." value={locketCaption} onChange={(e) => setLocketCaption(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2.5 px-4 text-xs outline-none text-white focus:ring-2 focus:ring-amber-500 transition-all" />
-                                            <div className="flex gap-2">
-                                                <button onClick={handlePublishPost} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 rounded-xl text-xs shadow-md transition-colors">🚀 Đăng lên</button>
-                                                <button onClick={startLocketCamera} className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold py-2 rounded-xl text-xs transition-colors">📸 Chụp lại</button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            <div className="flex-1 overflow-y-auto space-y-6 pr-1 scrollbar-hide max-h-[calc(100dvh-180px)]">
-                                {posts.length === 0 ? (
-                                    <div className="text-center text-slate-400 text-xs py-12">Chưa có ai đăng khoảnh khắc nào từ lúc kết bạn!</div>
-                                ) : posts.map(post => (
-                                    <div key={post._id} className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 rounded-[24px] shadow-sm overflow-hidden flex flex-col">
-                                        
-                                        {/* Header bài đăng (Avatar + Tên) */}
-                                        <div className="flex items-center gap-3 p-4">
-                                            <div className="w-9 h-9 bg-slate-200 rounded-xl overflow-hidden font-bold flex items-center justify-center text-sm text-slate-500">
-                                                {post.author?.avatar ? <img src={post.author.avatar} className="w-full h-full object-cover"/> : post.author?.fullName[0]}
-                                            </div>
-                                            <div>
-                                                <p className="font-bold text-xs text-slate-800 dark:text-white">{post.author?.fullName}</p>
-                                                <p className="text-[9px] text-blue-500">@{post.author?.uniqueName}</p>
-                                            </div>
-                                            <span className="text-[9px] text-slate-400 ml-auto font-medium">{new Date(post.createdAt).toLocaleDateString('vi-VN')}</span>
-                                        </div>
-
-                                        {/* Ảnh vuông bài đăng */}
-                                        <div className="w-full aspect-square bg-slate-900 overflow-hidden relative group">
-                                            <img src={post.imageUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" alt="locket-post"/>
-                                        </div>
-
-                                        {/* Thanh tương tác nhanh */}
-                                        <div className="p-4 flex flex-col gap-2">
-                                            <div className="flex items-center gap-3">
-                                                <button onClick={() => handleReactPost(post._id, '❤️')} className="text-xl active:scale-120 transition-transform">
-                                                    {post.reactions?.some(r => r.userId === user.id) ? '❤️' : '🤍'}
-                                                </button>
-                                                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                                                    {post.reactions?.length || 0} lượt thích
-                                                </span>
-                                            </div>
-
-                                            {/* Caption (Dòng trạng thái) */}
-                                            {post.caption && (
-                                                <p className="text-xs text-slate-700 dark:text-slate-300 break-words font-medium">
-                                                    <span className="font-black text-slate-900 dark:text-white mr-2">{post.author?.fullName}</span>
-                                                    {post.caption}
-                                                </p>
-                                            )}
-
-                                            {/* Danh sách bình luận (Instagram Style) */}
-                                            {post.comments && post.comments.length > 0 && (
-                                                <div className="mt-2 space-y-1.5 max-h-32 overflow-y-auto border-t border-slate-50 dark:border-slate-700/40 pt-2 scrollbar-hide">
-                                                    {post.comments.map((comment, index) => (
-                                                        <div key={index} className="text-[11px] text-slate-600 dark:text-slate-300 break-words">
-                                                            <span className="font-bold text-slate-800 dark:text-white mr-1.5">{comment.userId?.fullName}:</span>
-                                                            {comment.text}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-
-                                            {/* Ô gõ nhập bình luận */}
-                                            <form onSubmit={(e) => handleCommentPost(e, post._id)} className="flex items-center gap-2 mt-2 border-t border-slate-50 dark:border-slate-700/40 pt-2">
-                                                <input type="text" placeholder="Thêm bình luận..." value={commentInputs[post._id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post._id]: e.target.value })} className="flex-1 bg-transparent text-xs outline-none text-slate-700 dark:text-slate-200 placeholder-slate-400" />
-                                                <button type="submit" className="text-blue-500 font-bold text-xs active:scale-95 transition-transform">Gửi</button>
-                                            </form>
-                                        </div>
-
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                     {activeTab === 'profile' && (
                         <div className="flex flex-col h-full">
                             <div className="flex justify-between items-center mb-6">
@@ -1481,7 +1474,6 @@ export default function Home() {
                                     <button onClick={handleLogout} className="w-10 h-10 bg-red-50 dark:bg-red-500/10 text-red-500 rounded-full flex items-center justify-center"><i className="ri-logout-box-r-line"></i></button>
                                 </div>
                             </div>
-
                             <div className="flex flex-col items-center mb-6">
                                 <input type="file" accept="image/*" ref={uploadAvatarInputRef} className="hidden" onChange={(e) => setAvatarFile(e.target.files[0])} />
                                 {avatarFile ? (
@@ -1507,7 +1499,6 @@ export default function Home() {
                                 <p className="text-blue-500 dark:text-blue-400 font-medium text-sm bg-blue-50 dark:bg-blue-500/10 px-3 py-1 rounded-lg mt-1">{user.uniqueName}</p>
                                 <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">@{user.username}</p>
                             </div>
-
                             {isInstallable && (
                                 <div className="bg-gradient-to-r from-emerald-500 to-teal-600 p-4 rounded-[24px] mb-6 flex items-center justify-between shadow-lg shadow-emerald-500/20 md:hidden">
                                     <div className="flex items-center gap-3">
@@ -1520,31 +1511,75 @@ export default function Home() {
                                     <button onClick={handleInstallClick} className="bg-white text-emerald-600 px-4 py-2 rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all">Tải ngay</button>
                                 </div>
                             )}
-
                             <div className="bg-[#f8fafc] dark:bg-slate-900 p-5 rounded-[24px] border border-slate-100 dark:border-slate-800">
                                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">Đổi mật khẩu</p>
                                 <form onSubmit={handleChangePassword} className="space-y-3">
                                     <input type="password" placeholder="Mật khẩu cũ" required value={passwords.oldPass} onChange={(e) => setPasswords({...passwords, oldPass: e.target.value})} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl py-2.5 px-4 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
                                     <input type="password" placeholder="Mật khẩu mới" required value={passwords.newPass} onChange={(e) => setPasswords({...passwords, newPass: e.target.value})} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl py-2.5 px-4 text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
-                                    <button type="submit" className="w-full bg-[#0a192f] dark:bg-blue-600 hover:bg-blue-600 text-white py-3 rounded-xl text-sm font-bold shadow-md transition-all mt-2">Cập nhật</button>
+                                    <button type="submit" className="w-full bg-[#0b1426] dark:bg-blue-600 hover:bg-blue-600 text-white py-3 rounded-xl text-sm font-bold shadow-md transition-all mt-2">Cập nhật</button>
                                 </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ========================================== */}
+                    {/* CỘT TRÁI: DÀNH CHO DCAM (PC) & DFEED (MOBILE) */}
+                    {/* ========================================== */}
+                    {activeTab === 'locket' && (
+                        <div className="w-full h-full flex flex-col pb-4 animate-fade-in relative">
+                            {/* 1. MÁY TÍNH: Dcam Ở Cột Trái */}
+                            <div className="hidden md:flex flex-col h-full items-center p-2">
+                                {renderDcamUI(false)}
+                            </div>
+
+                            {/* 2. ĐIỆN THOẠI: Dfeed + Nút nổi Dcam */}
+                            <div className="flex md:hidden flex-col h-full w-full">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Dfeed</h2>
+                                </div>
+                                <div className="flex-1 overflow-y-auto scrollbar-hide pb-20">
+                                    {renderDfeedPosts()}
+                                </div>
+                                {/* NÚT BẤM NỔI (FAB) MỞ CAMERA DÀNH CHO MOBILE */}
+                                <button onClick={startLocketCamera} className="fixed bottom-24 right-6 w-14 h-14 bg-gradient-to-r from-amber-500 to-orange-600 hover:scale-105 rounded-full shadow-[0_10px_25px_rgba(245,158,11,0.5)] flex items-center justify-center text-white text-2xl active:scale-90 transition-transform z-40">
+                                    <i className="ri-camera-fill"></i>
+                                </button>
                             </div>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* MAIN CHAT AREA CHUẨN XỊN */}
-            <div className={`w-full md:flex-1 bg-white dark:bg-slate-800 md:rounded-[32px] shadow-sm flex-col overflow-hidden relative transition-colors ${!currentChat ? 'hidden md:flex' : 'flex absolute inset-0 z-50 md:relative md:z-0'}`}>
-                {!currentChat ? (
+            {/* MAIN CHAT AREA VÀ DFEED (CHO MÁY TÍNH) */}
+            <div className={`w-full md:flex-1 bg-white dark:bg-slate-800 md:rounded-[32px] shadow-sm flex-col overflow-hidden relative transition-colors ${(!currentChat && activeTab !== 'locket') ? 'hidden md:flex' : 'flex absolute inset-0 z-50 md:relative md:z-0'}`}>
+                
+                {/* 1. MÀN HÌNH CHỜ (Khi không chat và không mở Dfeed) */}
+                {(!currentChat && activeTab !== 'locket') && (
                     <div className="flex-1 flex flex-col items-center justify-center text-center px-10">
                         <div className="w-24 h-24 bg-[#f8fafc] dark:bg-slate-900 rounded-[40px] flex items-center justify-center mb-8 shadow-inner border border-white dark:border-slate-700 text-5xl">✨</div>
                         <h3 className="text-3xl font-bold text-slate-800 dark:text-white mb-3">DluaChat Pro</h3>
                         <p className="text-slate-400 max-w-sm text-[15px]">Đã Sẵn Sàng!</p>
                     </div>
-                ) : (
+                )}
+
+                {/* 2. DFEED DÀNH CHO MÁY TÍNH (Hiển thị ở cột phải rộng rãi) */}
+                {(activeTab === 'locket') && (
+                    <div className="hidden md:flex flex-col w-full h-full bg-[#f8fafc] dark:bg-slate-900 animate-fade-in">
+                        <div className="px-8 pt-8 pb-4">
+                            <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Dfeed</h2>
+                            <p className="text-slate-500 text-sm mt-1">Khám phá khoảnh khắc của bạn bè</p>
+                        </div>
+                        <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col items-center px-4 pb-10">
+                            <div className="w-full max-w-xl mt-4">
+                                {renderDfeedPosts()}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 3. GIAO DIỆN CHAT CHÍNH (Đã bọc lại an toàn) */}
+                {(currentChat && activeTab !== 'locket') && (
                     <>
-                        {/* HEADER CHAT */}
                         <div className="h-[80px] border-b border-slate-100 dark:border-slate-700 flex items-center justify-between px-4 md:px-8 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md z-10 sticky top-0 transition-colors pt-safe">
                             <div className="flex items-center gap-3">
                                 <button 
@@ -1575,7 +1610,6 @@ export default function Home() {
                             </div>
                         </div>
 
-                        {/* LIST TIN NHẮN */}
                         <div ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#f8fafc] dark:bg-slate-900 space-y-4 transition-colors">
                             {isLoadingMore && <div className="flex justify-center py-2"><div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>}
 
@@ -1626,7 +1660,6 @@ export default function Home() {
                                                             </div>
                                                         )}
                                                         
-                                                        {/* ẢNH VÀ VIDEO ĐÃ CÓ CHỨC NĂNG CLICK PHÓNG TO */}
                                                         {msg.imageUrl && <img onClick={() => setViewingMedia({ url: msg.imageUrl, type: 'image', name: msg.fileName || 'image.png' })} src={msg.imageUrl} className={`cursor-zoom-in hover:opacity-90 max-w-full h-auto max-h-56 object-cover rounded-2xl shadow-sm ${isMe ? 'ml-auto' : 'mr-auto'} transition-opacity`} />}
                                                         {msg.videoUrl && <div className={`relative w-fit ${isMe ? 'ml-auto' : 'mr-auto'}`}><video src={msg.videoUrl} className="max-w-full h-auto max-h-56 rounded-2xl shadow-sm bg-black" /><button onClick={() => setViewingMedia({ url: msg.videoUrl, type: 'video', name: msg.fileName || 'video.mp4' })} className="absolute inset-0 w-full h-full flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity rounded-2xl cursor-zoom-in"><i className="ri-fullscreen-line text-white text-4xl drop-shadow-md"></i></button></div>}
                                                         {msg.fileUrl && (
@@ -1640,7 +1673,6 @@ export default function Home() {
                                                                         const blobUrl = window.URL.createObjectURL(blob);
                                                                         const link = document.createElement('a');
                                                                         link.href = blobUrl;
-                                                                        // ÉP TRÌNH DUYỆT ĐẶT ĐÚNG TÊN TIẾNG VIỆT SAU KHI DỊCH NGƯỢC
                                                                         link.download = decodeFileName(msg.fileName); 
                                                                         document.body.appendChild(link);
                                                                         link.click();
@@ -1657,7 +1689,6 @@ export default function Home() {
                                                         {msg.text && <div className={`py-2 px-4 rounded-[22px] text-[15px] shadow-sm w-fit max-w-full break-words whitespace-pre-wrap ${isMe ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-sm ml-auto' : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-600 rounded-tl-sm mr-auto'}`}>{msg.text}</div>}
                                                         {msg.reactions && msg.reactions.length > 0 && <div className={`absolute -bottom-3 ${isMe ? 'right-2' : 'left-2'} bg-white border border-slate-100 shadow-md rounded-full px-2 py-0.5 text-xs flex gap-1 z-10`}>{msg.reactions.map((r, i) => <span key={i}>{r.emoji}</span>)}</div>}
                                                         
-                                                        {/* MENU TƯƠNG TÁC */}
                                                         <div className={`absolute top-[100%] mt-2 flex items-center gap-1.5 transition-all duration-200 bg-white border border-slate-200 shadow-lg rounded-full px-3 py-1.5 z-30 ${activeMenuId === msg._id ? 'opacity-100 visible translate-y-0' : 'opacity-0 invisible -translate-y-2'} ${isMe ? 'right-0' : 'left-0'}`}>
                                                             <button onClick={(e) => { e.stopPropagation(); setReplyingTo(msg); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">↩️</button>
                                                             <button onClick={(e) => { e.stopPropagation(); handleReact(msg._id, '❤️'); setActiveMenuId(null); }} className="hover:bg-slate-100 p-1.5 rounded-full text-sm">❤️</button>
@@ -1668,7 +1699,6 @@ export default function Home() {
                                                 )}
                                             </div>
 
-                                            {/* NÚT 3 CHẤM */}
                                             {!isMe && !msg.isUnsent && (
                                                 <div className="relative">
                                                     <button onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === msg._id ? null : msg._id); }} className="text-slate-300 hover:text-slate-600 dark:hover:text-slate-200 transition-all p-2 rounded-full opacity-100 md:opacity-0 group-hover:opacity-100 focus:opacity-100 active:bg-slate-100 dark:active:bg-slate-700 w-8 h-8 flex items-center justify-center">
@@ -1681,7 +1711,6 @@ export default function Home() {
                                 );
                             })}
                             
-                            {/* HIỆU ỨNG TÊN LỬA CHỜ GỬI FILE CỰC NGẦU */}
                             {isUploading && (
                                 <div className="flex justify-end mb-4 animate-pulse">
                                     <div className="bg-slate-100 dark:bg-slate-700/80 p-3 md:p-4 rounded-2xl rounded-tr-sm shadow-sm flex items-center gap-3 md:gap-4 border border-slate-200 dark:border-slate-600">
@@ -1721,7 +1750,6 @@ export default function Home() {
                             <div ref={scrollRef} />
                         </div>
 
-                        {/* INPUT TIN NHẮN */}
                         <div className="bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 p-3 md:p-4 transition-colors pb-safe">
                             {replyingTo && (
                                 <div className="mb-3 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 rounded-xl flex justify-between items-center">
@@ -1762,7 +1790,7 @@ export default function Home() {
 
                                 <form onSubmit={handleSendMessage} className="flex-1 flex gap-2 md:gap-3 h-full items-center ml-1 md:ml-2">
                                     <input type="text" placeholder="Nhắn tin..." value={newMessage} onChange={(e) => { setNewMessage(e.target.value); socket.emit('typing', { senderId: user.id, receiverId: currentChat._id }); if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current); typingTimeoutRef.current = setTimeout(() => socket.emit('stop_typing', { senderId: user.id, receiverId: currentChat._id }), 2000); }} className="flex-1 h-full bg-[#f0f4f8] dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-full px-4 md:px-5 text-[14px] md:text-[15px] outline-none focus:ring-2 focus:ring-blue-500 transition-all text-slate-700 dark:text-slate-200" />
-                                    <button type="submit" className="w-10 h-10 md:w-12 md:h-12 bg-[#0a192f] dark:bg-blue-600 hover:bg-blue-600 dark:hover:bg-blue-500 text-white rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 shrink-0"><i className="ri-send-plane-fill text-lg md:text-xl relative right-[1px]"></i></button>
+                                    <button type="submit" className="w-10 h-10 md:w-12 md:h-12 bg-[#0b1426] dark:bg-blue-600 hover:bg-blue-600 dark:hover:bg-blue-500 text-white rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 shrink-0"><i className="ri-send-plane-fill text-lg md:text-xl relative right-[1px]"></i></button>
                                 </form>
                             </div>
                         </div>
@@ -1770,32 +1798,39 @@ export default function Home() {
                 )}
             </div>
 
-            {/* BOTTOM NAV MOBILE */}
-            {!currentChat && (
-                <div className="md:hidden fixed bottom-0 left-0 w-full h-[70px] bg-white dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800 flex items-center justify-around z-40 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] pb-safe px-2 transition-colors">
-                    <button onClick={() => setActiveTab('chat')} className={`relative flex flex-col items-center gap-1 w-16 ${activeTab === 'chat' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
+            {/* OVERLAY DCAM CHO ĐIỆN THOẠI (Bật lên khi bấm nút nổi) */}
+            {isCameraOpen && (
+                <div className="md:hidden fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4">
+                     {renderDcamUI(true)}
+                </div>
+            )}
+
+            {/* THANH ĐIỀU HƯỚNG DƯỚI ĐÁY CHO ĐIỆN THOẠI */}
+            {(!currentChat || activeTab === 'locket') && (
+                <div className="md:hidden fixed bottom-0 left-0 w-full h-[70px] bg-white dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800 flex items-center justify-around z-30 shadow-[0_-10px_20px_rgba(0,0,0,0.05)] pb-safe px-2 transition-colors">
+                    <button onClick={() => { setActiveTab('chat'); setCurrentChat(null); }} className={`relative flex flex-col items-center gap-1 w-16 ${activeTab === 'chat' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
                         <div className="relative">
                             <i className={`${activeTab === 'chat' ? 'ri-chat-3-fill' : 'ri-chat-3-line'} text-2xl`}></i>
                             {Object.values(unreadCounts).some(c => c > 0) && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-slate-950"></span>}
                         </div>
                         <span className="text-[10px] font-bold">Chat</span>
                     </button>
-                    <button onClick={() => setActiveTab('friends')} className={`relative flex flex-col items-center gap-1 w-16 ${activeTab === 'friends' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                    <button onClick={() => { setActiveTab('friends'); setCurrentChat(null); }} className={`relative flex flex-col items-center gap-1 w-16 ${activeTab === 'friends' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
                         <div className="relative">
                             <i className={`${activeTab === 'friends' ? 'ri-user-smile-fill' : 'ri-user-smile-line'} text-2xl`}></i>
                             {pendingRequests.length > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-slate-950"></span>}
                         </div>
                         <span className="text-[10px] font-bold">Bạn bè</span>
                     </button>
-                    <button onClick={() => setActiveTab('locket')} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'locket' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                    <button onClick={() => { setActiveTab('locket'); setCurrentChat(null); }} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'locket' ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>
                         <i className={`${activeTab === 'locket' ? 'ri-instagram-fill' : 'ri-instagram-line'} text-2xl`}></i>
-                        <span className="text-[10px] font-bold">Locket</span>
+                        <span className="text-[10px] font-bold">Dfeed</span>
                     </button>
-                    <button onClick={() => setActiveTab('groups')} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'groups' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                    <button onClick={() => { setActiveTab('groups'); setCurrentChat(null); }} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'groups' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
                         <i className={`${activeTab === 'groups' ? 'ri-group-fill' : 'ri-group-line'} text-2xl`}></i>
                         <span className="text-[10px] font-bold">Nhóm</span>
                     </button>
-                    <button onClick={() => setActiveTab('profile')} className="flex flex-col items-center gap-1 w-16">
+                    <button onClick={() => { setActiveTab('profile'); setCurrentChat(null); }} className="flex flex-col items-center gap-1 w-16">
                         <div className={`w-7 h-7 rounded-full overflow-hidden border-2 ${activeTab === 'profile' ? 'border-blue-600 dark:border-blue-500' : 'border-transparent'}`}>
                             {user.avatar ? <img src={user.avatar} className="w-full h-full object-cover"/> : <div className="w-full h-full bg-blue-500 text-white flex items-center justify-center text-xs font-bold">{user.fullName[0]}</div>}
                         </div>

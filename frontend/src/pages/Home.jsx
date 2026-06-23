@@ -556,13 +556,16 @@ export default function Home() {
 
     // 2. Mở Camera ống kính tròn 
     const startLocketCamera = async () => {
+        console.log("-> Bấm nút bật Dcam...");
         setCapturedImage(null);
         setIsCameraOpen(true);
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480, facingMode: "user" }, audio: false });
+            console.log("-> Đã lấy được quyền Camera từ hệ điều hành!");
             setLocketStream(stream);
         } catch (err) {
-            toast.error("Không thể truy cập Camera. Bạn có thể chọn file ảnh tải lên!");
+            console.error("Lỗi xin quyền Camera:", err);
+            toast.error("Không thể truy cập Camera. Cấp quyền hoặc tải ảnh lên!");
         }
     };
 
@@ -582,9 +585,11 @@ export default function Home() {
         const video = isDesktop ? desktopVideoRef.current : mobileVideoRef.current;
         
         if (!video) {
+            console.error("LỖI CHỤP: Không tìm thấy khung video đang chạy!");
             toast.error("Lỗi: Không tìm thấy luồng Camera!");
             return;
         }
+        console.log(`-> Tiến hành chụp ảnh từ khung: ${isDesktop ? 'MÁY TÍNH' : 'ĐIỆN THOẠI'}`);
         const canvas = document.createElement('canvas');
         canvas.width = 480;
         canvas.height = 480;
@@ -1158,15 +1163,10 @@ export default function Home() {
                     <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
                         {!capturedImage ? (
                             <video 
-                                ref={(el) => {
-                                    if (isMobileOverlay) mobileVideoRef.current = el;
-                                    else desktopVideoRef.current = el;
-                                    if (el && locketStream && el.srcObject !== locketStream) {
-                                        el.srcObject = locketStream;
-                                    }
-                                }} 
+                                ref={isMobileOverlay ? mobileVideoRef : desktopVideoRef} 
                                 autoPlay playsInline muted 
                                 className="w-full h-full object-cover transform scale-x-[-1]" 
+                                onPlay={() => console.log("✅ Thẻ Video báo cáo: ĐANG PHÁT HÌNH!")}
                             />
                         ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                     </div>

@@ -99,8 +99,6 @@ export default function Home() {
     const [currentChat, setCurrentChat] = useState(null);
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
-    
-    // ĐÃ SỬA: Không dùng localStorage nữa, khởi tạo mảng rỗng để lấy từ DB
     const [unreadCounts, setUnreadCounts] = useState({});
 
     // 3. STATES: Chat & Menu Tools
@@ -132,6 +130,12 @@ export default function Home() {
     const pressTimerRef = useRef(null);
     const [isPublishReady, setIsPublishReady] = useState(false);
     const lastActionTime = useRef(0);
+
+    // STATES CHO GAME HUB
+    const [games, setGames] = useState([]);
+    const [playingGame, setPlayingGame] = useState(null);
+    const [showAddGameModal, setShowAddGameModal] = useState(false);
+    const [newGameData, setNewGameData] = useState({ title: '', url: '', thumbnail: '' });
 
     // 4. STATES: WebRTC & Call
     const [callStatus, setCallStatus] = useState('idle'); 
@@ -742,6 +746,32 @@ export default function Home() {
             setCommentInputs(prev => ({ ...prev, [postId]: '' }));
         } catch (err) { console.error(err); }
     };
+    
+    // LOGIC GAME HUB
+    const fetchGames = async () => {
+        try {
+            const res = await axios.get('https://dlua-chat-api.onrender.com/api/games/list');
+            setGames(res.data);
+        } catch (err) { console.error("Lỗi tải game:", err); }
+    };
+    useEffect(() => { if (activeTab === 'games') fetchGames(); }, [activeTab]);
+
+    const handleAddGame = async (e) => {
+        e.preventDefault();
+        const loadingToast = toast.loading("Đang đẩy game lên Hub...");
+        try {
+            await axios.post('https://dlua-chat-api.onrender.com/api/games/add', { ...newGameData, author: user.id });
+            toast.success("Đăng Game thành công! 🎮", { id: loadingToast });
+            setShowAddGameModal(false);
+            setNewGameData({ title: '', url: '', thumbnail: '' });
+            fetchGames();
+        } catch (err) { toast.error("Lỗi khi thêm Game", { id: loadingToast }); }
+    };
+
+    const handlePlayGame = async (game) => {
+        setPlayingGame(game);
+        try { await axios.put(`https://dlua-chat-api.onrender.com/api/games/play/${game._id}`); } catch (err) {}
+    };
 
     const handleScroll = (e) => { if (e.target.scrollTop === 0 && hasMore && !isLoadingMore) setPage(prev => prev + 1); };
     const handleInstallClick = async () => {
@@ -1127,7 +1157,51 @@ export default function Home() {
                     {viewingMedia.type === 'image' ? ( <img src={viewingMedia.url} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-fade-in" /> ) : ( <video src={viewingMedia.url} controls autoPlay className="max-w-full max-h-full rounded-lg shadow-2xl animate-fade-in" /> )}
                 </div>
             )}
+            {/* LỚP PHỦ CHƠI GAME FULL MÀN HÌNH */}
+            {playingGame && (
+                <div className="fixed inset-0 bg-black z-[999999] flex flex-col animate-fade-in">
+                    <div className="h-14 bg-slate-900 flex justify-between items-center px-4 shrink-0">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center text-white"><i className="ri-gamepad-fill"></i></div>
+                            <div>
+                                <h3 className="text-white font-bold text-sm leading-tight">{playingGame.title}</h3>
+                                <p className="text-slate-400 text-[10px]">Tác giả: {playingGame.author?.fullName}</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setPlayingGame(null)} className="w-10 h-10 bg-white/10 hover:bg-red-500 rounded-full text-white flex items-center justify-center transition-colors"><i className="ri-close-line text-2xl"></i></button>
+                    </div>
+                    <div className="flex-1 bg-black w-full h-full relative">
+                        <iframe src={playingGame.url} className="absolute inset-0 w-full h-full border-none" allow="autoplay; fullscreen" />
+                    </div>
+                </div>
+            )}
 
+            {/* MODAL THÊM GAME MỚI */}
+            {showAddGameModal && (
+                <div className="fixed inset-0 bg-black/60 z-[99999] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-800 rounded-[32px] p-6 w-full max-w-md shadow-2xl animate-fade-in">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-2xl font-black text-slate-800 dark:text-white">Thêm Game Mới</h3>
+                            <button onClick={() => setShowAddGameModal(false)} className="w-8 h-8 bg-slate-100 dark:bg-slate-700 rounded-full text-slate-500 dark:text-slate-300 hover:text-red-500 flex items-center justify-center"><i className="ri-close-line text-xl"></i></button>
+                        </div>
+                        <form onSubmit={handleAddGame} className="space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Tên trò chơi</label>
+                                <input type="text" required value={newGameData.title} onChange={e => setNewGameData({...newGameData, title: e.target.value})} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-white" placeholder="VD: Flappy Bird" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Link Game (URL)</label>
+                                <input type="url" required value={newGameData.url} onChange={e => setNewGameData({...newGameData, url: e.target.value})} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-white" placeholder="https://..." />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase">Link Ảnh bìa (Tùy chọn)</label>
+                                <input type="url" value={newGameData.thumbnail} onChange={e => setNewGameData({...newGameData, thumbnail: e.target.value})} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-white" placeholder="https://..." />
+                            </div>
+                            <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3.5 rounded-xl font-bold shadow-lg transition-all mt-4">Đăng Game 🚀</button>
+                        </form>
+                    </div>
+                </div>
+            )}
             {/* LỚP PHỦ CUỘC GỌI */}
             {callStatus !== 'idle' && (
                 <div className="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center backdrop-blur-md overflow-hidden touch-none">
@@ -1194,6 +1268,9 @@ export default function Home() {
                     </button>
                     <button onClick={() => { setActiveTab('locket'); setCurrentChat(null); }} className={`relative w-[46px] h-[46px] rounded-[18px] flex items-center justify-center transition-all ${activeTab === 'locket' ? 'bg-[#3b4758] text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/5'}`} title="Dfeed">
                         <i className={`text-[26px] ${activeTab === 'locket' ? 'ri-instagram-fill text-amber-500' : 'ri-instagram-line'}`}></i>
+                    </button>
+                    <button onClick={() => { setActiveTab('games'); setCurrentChat(null); }} className={`relative w-[46px] h-[46px] rounded-[18px] flex items-center justify-center transition-all ${activeTab === 'games' ? 'bg-indigo-500 text-white shadow-inner shadow-indigo-400' : 'text-slate-400 hover:text-indigo-400 hover:bg-white/5'}`} title="Game Hub">
+                        <i className="ri-gamepad-fill text-[24px]"></i>
                     </button>
                     <button onClick={() => setActiveTab('groups')} className={`w-[46px] h-[46px] rounded-[18px] flex items-center justify-center transition-all ${activeTab === 'groups' ? 'bg-[#3b4758] text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/5'}`} title="Nhóm"><i className="ri-group-fill text-[24px]"></i></button>
                     <div className="w-8 h-[1px] bg-slate-700/50 my-2"></div>
@@ -1356,7 +1433,32 @@ export default function Home() {
                             </div>
                         </div>
                     )}
-
+                    {activeTab === 'games' && (
+                        <>
+                            <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-6 tracking-tight">Game Hub 🎮</h2>
+                            <button onClick={() => setShowAddGameModal(true)} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-2xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 mb-6 md:hidden">
+                                <i className="ri-add-line text-xl"></i> Thêm Game Mới
+                            </button>
+                            <div className="md:hidden grid grid-cols-2 gap-4 pb-20">
+                                {games.map(game => (
+                                    <div key={game._id} className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-sm border border-slate-100 dark:border-slate-700 active:scale-95 transition-transform" onClick={() => handlePlayGame(game)}>
+                                        <div className="aspect-square bg-slate-100 dark:bg-slate-700 relative">
+                                            {game.thumbnail ? <img src={game.thumbnail} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-4xl">🎮</div>}
+                                            <div className="absolute top-2 right-2 bg-black/50 backdrop-blur text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1"><i className="ri-play-fill"></i> {game.plays || 0}</div>
+                                        </div>
+                                        <div className="p-2.5">
+                                            <h3 className="font-bold text-slate-800 dark:text-white text-[13px] truncate">{game.title}</h3>
+                                            <p className="text-[10px] text-slate-500 truncate mt-0.5">{game.author?.fullName}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="hidden md:flex flex-col items-center justify-center h-[50vh] text-center opacity-50">
+                                <i className="ri-gamepad-line text-6xl mb-4 text-indigo-500"></i>
+                                <p className="font-bold text-slate-800 dark:text-white">Kho Trò chơi DluaChat</p>
+                            </div>
+                        </>
+                    )}
                     {/* ========================================== */}
                     {/* CỘT TRÁI: DÀNH CHO DCAM (PC) & DFEED (MOBILE) */}
                     {/* ========================================== */}
@@ -1393,7 +1495,7 @@ export default function Home() {
             <div className={`w-full md:flex-1 bg-white dark:bg-slate-800 md:rounded-[32px] shadow-sm flex-col overflow-hidden relative transition-colors ${(!currentChat && activeTab !== 'locket') ? 'hidden md:flex' : 'flex absolute inset-0 z-50 md:relative md:z-0'}`}>
                 
                 {/* 1. MÀN HÌNH CHỜ (Khi không chat và không mở Dfeed) */}
-                {(!currentChat && activeTab !== 'locket') && (
+                {(!currentChat && activeTab !== 'locket' && activeTab !== 'games') && (
                     <div className="flex-1 flex flex-col items-center justify-center text-center px-10">
                         <div className="w-24 h-24 bg-[#f8fafc] dark:bg-slate-900 rounded-[40px] flex items-center justify-center mb-8 shadow-inner border border-white dark:border-slate-700 text-5xl">✨</div>
                         <h3 className="text-3xl font-bold text-slate-800 dark:text-white mb-3">DluaChat Pro</h3>
@@ -1419,9 +1521,46 @@ export default function Home() {
                         </div>
                     </div>
                 )}
-
+                {/* GAME HUB DÀNH CHO MÁY TÍNH */}
+                {(activeTab === 'games') && (
+                    <div className="hidden md:flex flex-col w-full h-full bg-[#f8fafc] dark:bg-slate-900 animate-fade-in">
+                        <div className="px-8 pt-8 pb-4 flex justify-between items-center border-b border-slate-100 dark:border-slate-800">
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <h2 className="text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500">Game Hub</h2>
+                                    <i className="ri-gamepad-fill text-indigo-500 text-3xl animate-bounce"></i>
+                                </div>
+                                <p className="text-slate-500 text-sm font-medium">Giải trí cùng bạn bè với hàng ngàn trò chơi</p>
+                            </div>
+                            <button onClick={() => setShowAddGameModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-2xl font-bold shadow-lg transition-all flex items-center gap-2 active:scale-95">
+                                <i className="ri-add-line text-xl"></i> Đăng Game
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto scrollbar-hide px-8 pb-10">
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mt-6">
+                                {games.map(game => (
+                                    <div key={game._id} className="bg-white dark:bg-slate-800 rounded-3xl overflow-hidden shadow-sm hover:shadow-2xl transition-all group cursor-pointer border border-slate-100 dark:border-slate-700" onClick={() => handlePlayGame(game)}>
+                                        <div className="aspect-[4/3] bg-slate-100 dark:bg-slate-700 relative overflow-hidden">
+                                            {game.thumbnail ? <img src={game.thumbnail} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : <div className="w-full h-full flex items-center justify-center text-5xl">🎮</div>}
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-indigo-600 text-2xl shadow-lg pl-1"><i className="ri-play-fill"></i></div>
+                                            </div>
+                                        </div>
+                                        <div className="p-4">
+                                            <h3 className="font-bold text-slate-800 dark:text-white text-lg truncate">{game.title}</h3>
+                                            <div className="flex justify-between items-center mt-2">
+                                                <p className="text-xs text-slate-500 font-medium">Bởi: {game.author?.fullName}</p>
+                                                <p className="text-xs text-indigo-500 font-bold bg-indigo-50 dark:bg-indigo-900/30 px-2 py-1 rounded-lg"><i className="ri-play-fill"></i> {game.plays || 0}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {/* 3. GIAO DIỆN CHAT CHÍNH (Đã bọc lại an toàn) */}
-                {(currentChat && activeTab !== 'locket') && (
+                {(currentChat && activeTab !== 'locket' && activeTab !== 'games') && (
                     <>
                         <div className="h-[80px] border-b border-slate-100 dark:border-slate-700 flex items-center justify-between px-4 md:px-8 bg-white/80 dark:bg-slate-800/80 backdrop-blur-md z-10 sticky top-0 transition-colors pt-safe">
                             <div className="flex items-center gap-3">
@@ -1668,6 +1807,10 @@ export default function Home() {
                     <button onClick={() => { setActiveTab('locket'); setCurrentChat(null); }} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'locket' ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'}`}>
                         <i className={`${activeTab === 'locket' ? 'ri-instagram-fill' : 'ri-instagram-line'} text-2xl`}></i>
                         <span className="text-[10px] font-bold">Dfeed</span>
+                    </button>
+                    <button onClick={() => { setActiveTab('games'); setCurrentChat(null); }} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'games' ? 'text-indigo-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                        <i className={`${activeTab === 'games' ? 'ri-gamepad-fill' : 'ri-gamepad-line'} text-2xl`}></i>
+                        <span className="text-[10px] font-bold">Game</span>
                     </button>
                     <button onClick={() => { setActiveTab('groups'); setCurrentChat(null); }} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'groups' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
                         <i className={`${activeTab === 'groups' ? 'ri-group-fill' : 'ri-group-line'} text-2xl`}></i>

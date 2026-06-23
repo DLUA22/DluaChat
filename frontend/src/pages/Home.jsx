@@ -556,16 +556,24 @@ export default function Home() {
 
     // 2. Mở Camera ống kính tròn 
     const startLocketCamera = async () => {
-        console.log("-> Bấm nút bật Dcam...");
         setCapturedImage(null);
         setIsCameraOpen(true);
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480, facingMode: "user" }, audio: false });
-            console.log("-> Đã lấy được quyền Camera từ hệ điều hành!");
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: 480, height: 480, facingMode: "user" }, 
+                audio: false 
+            });
             setLocketStream(stream);
+            requestAnimationFrame(() => {
+                const video = window.innerWidth >= 768 ? desktopVideoRef.current : mobileVideoRef.current;
+                if (video) {
+                    video.srcObject = stream;
+                    video.play().catch(e => console.log("Auto-play bị chặn, người dùng cần tương tác thêm?"));
+                }
+            });
         } catch (err) {
             console.error("Lỗi xin quyền Camera:", err);
-            toast.error("Không thể truy cập Camera. Cấp quyền hoặc tải ảnh lên!");
+            toast.error("Không thể truy cập Camera!");
         }
     };
 
@@ -584,12 +592,10 @@ export default function Home() {
         const isDesktop = window.innerWidth >= 768;
         const video = isDesktop ? desktopVideoRef.current : mobileVideoRef.current;
         
-        if (!video) {
-            console.error("LỖI CHỤP: Không tìm thấy khung video đang chạy!");
-            toast.error("Lỗi: Không tìm thấy luồng Camera!");
+        if (!video || !video.srcObject) {
+            toast.error("Camera chưa sẵn sàng, thử lại nhé!");
             return;
-        }
-        console.log(`-> Tiến hành chụp ảnh từ khung: ${isDesktop ? 'MÁY TÍNH' : 'ĐIỆN THOẠI'}`);
+        }   
         const canvas = document.createElement('canvas');
         canvas.width = 480;
         canvas.height = 480;
@@ -597,11 +603,13 @@ export default function Home() {
         ctx.translate(480, 0);
         ctx.scale(-1, 1);
         ctx.drawImage(video, 0, 0, 480, 480);
+        
         const dataUrl = canvas.toDataURL('image/jpeg');
         setCapturedImage(dataUrl);
+        
+        // Dừng stream sau khi chụp
         if (locketStream) {
             locketStream.getTracks().forEach(track => track.stop());
-            setLocketStream(null);
         }
     };
     const handlePublishPost = async () => {
@@ -1166,7 +1174,6 @@ export default function Home() {
                                 ref={isMobileOverlay ? mobileVideoRef : desktopVideoRef} 
                                 autoPlay playsInline muted 
                                 className="w-full h-full object-cover transform scale-x-[-1]" 
-                                onPlay={() => console.log("✅ Thẻ Video báo cáo: ĐANG PHÁT HÌNH!")}
                             />
                         ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                     </div>

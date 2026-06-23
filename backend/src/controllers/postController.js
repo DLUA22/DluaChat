@@ -44,8 +44,11 @@ exports.reactToPost = async (req, res) => {
         const post = await Post.findById(postId);
         const existingReact = post.reactions.findIndex(r => r.userId.toString() === userId);
         
-        if (existingReact !== -1) post.reactions.splice(existingReact, 1);
-        post.reactions.push({ userId, emoji });
+        if (existingReact !== -1) {
+            post.reactions.splice(existingReact, 1);
+        } else {
+            post.reactions.push({ userId, emoji });
+        }
         
         await post.save();
         res.status(200).json(post.reactions);

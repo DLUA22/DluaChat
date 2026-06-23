@@ -1154,7 +1154,7 @@ export default function Home() {
                 <>
                     <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
                         {!capturedImage ? (
-                            <video ref={locketVideoRef} autoPlay playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
+                            <video ref={locketVideoRef} autoPlay playsInline muted className="w-full h-full object-cover transform scale-x-[-1]" />
                         ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                     </div>
 

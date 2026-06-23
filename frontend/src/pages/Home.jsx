@@ -129,6 +129,7 @@ export default function Home() {
     const videoChunksRef = useRef([]);
     const [recordingProgress, setRecordingProgress] = useState(0); 
     const progressIntervalRef = useRef(null);
+    const pressTimerRef = useRef(null);
 
     // 4. STATES: WebRTC & Call
     const [callStatus, setCallStatus] = useState('idle'); 
@@ -585,50 +586,90 @@ export default function Home() {
         const isDesktop = window.innerWidth >= 768;
         const video = isDesktop ? desktopVideoRef.current : mobileVideoRef.current;
         if (!video || !video.srcObject) return;
+        
         const canvas = document.createElement('canvas');
         canvas.width = 480; canvas.height = 480;
         const ctx = canvas.getContext('2d');
         if (isFrontCamera) { ctx.translate(480, 0); ctx.scale(-1, 1); }
         ctx.drawImage(video, 0, 0, 480, 480);
+        
         setCapturedImage(canvas.toDataURL('image/jpeg'));
         if (locketStream) locketStream.getTracks().forEach(track => track.stop());
     };
 
+    // 4.2 Giữ nút để Quay Video 5s
     const startRecording = () => {
-        if (!locketStream) return;
+        // Kiểm tra xem camera đã sẵn sàng chưa, và tránh quay 2 lần
+        if (!locketStream || !locketStream.active) return;
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") return;
+
         videoChunksRef.current = [];
-        const mediaRecorder = new MediaRecorder(locketStream);
-        mediaRecorderRef.current = mediaRecorder;
+        try {
+            const mediaRecorder = new MediaRecorder(locketStream);
+            mediaRecorderRef.current = mediaRecorder;
 
-        mediaRecorder.ondataavailable = (event) => { if (event.data.size > 0) videoChunksRef.current.push(event.data); };
-        mediaRecorder.onstop = () => {
-            const blob = new Blob(videoChunksRef.current, { type: 'video/mp4' });
-            setCapturedVideo(window.URL.createObjectURL(blob));
-            if (locketStream) locketStream.getTracks().forEach(track => track.stop());
-            setIsRecording(false);
-            clearInterval(progressIntervalRef.current); setRecordingProgress(0);
-        };
+            mediaRecorder.ondataavailable = (event) => { 
+                if (event.data && event.data.size > 0) videoChunksRef.current.push(event.data); 
+            };
+            
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(videoChunksRef.current, { type: 'video/mp4' });
+                setCapturedVideo(window.URL.createObjectURL(blob));
+                if (locketStream) locketStream.getTracks().forEach(track => track.stop());
+                setIsRecording(false);
+                clearInterval(progressIntervalRef.current); setRecordingProgress(0);
+            };
 
-        mediaRecorder.start(); setIsRecording(true);
+            mediaRecorder.start(100); 
+            setIsRecording(true);
 
-        // HIỆU ỨNG VÒNG TRÒN CHẠY 5 GIÂY (5000ms)
-        setRecordingProgress(0);
-        progressIntervalRef.current = setInterval(() => {
-            setRecordingProgress(prev => {
-                if (prev >= 100) { clearInterval(progressIntervalRef.current); return 100; }
-                return prev + 1; // Mỗi 50ms tăng 1% -> 100% mất 5 giây
-            });
-        }, 50);
+            setRecordingProgress(0);
+            progressIntervalRef.current = setInterval(() => {
+                setRecordingProgress(prev => {
+                    if (prev >= 100) { clearInterval(progressIntervalRef.current); return 100; }
+                    return prev + 1; 
+                });
+            }, 50);
 
-        setTimeout(() => {
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") mediaRecorderRef.current.stop();
-        }, 5000);
+            setTimeout(() => {
+                if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+                    mediaRecorderRef.current.stop();
+                }
+            }, 5000);
+        } catch(err) {
+            console.error("Lỗi MediaRecorder:", err);
+            toast.error("Trình duyệt không hỗ trợ quay video, hoặc đang tải!");
+        }
     };
 
     const stopRecording = () => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") mediaRecorderRef.current.stop();
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+            mediaRecorderRef.current.stop();
+        }
     };
 
+    // 4.3 THUẬT TOÁN TÁCH BIỆT CHẠM (CHỤP) VÀ GIỮ (QUAY)
+    const handlePointerDown = (e) => {
+        // Nhấn xuống: Đợi 0.3s. Nếu người dùng giữ lâu hơn 0.3s thì gọi hàm Quay Video
+        pressTimerRef.current = setTimeout(() => {
+            startRecording();
+            pressTimerRef.current = null; // Đánh dấu là đã bắt đầu quay
+        }, 300);
+    };
+
+    const handlePointerUp = (e) => {
+        if (pressTimerRef.current) {
+            // Trường hợp 1: Nhả tay ra trước 0.3s -> Đây là thao tác CHẠM -> Chụp ảnh!
+            clearTimeout(pressTimerRef.current);
+            pressTimerRef.current = null;
+            captureLocketPhoto();
+        } else {
+            // Trường hợp 2: Nhả tay ra sau 0.3s -> Đang quay video -> Dừng quay!
+            stopRecording();
+        }
+    };
+
+    // 5. Đăng bài lên Dfeed
     const handlePublishPost = async () => {
         if (!capturedImage && !capturedVideo) return;
         const loadingToast = toast.loading("Đang bắn lên Dfeed...");
@@ -646,14 +687,11 @@ export default function Home() {
         } catch (err) { toast.error("Đăng thất bại!", { id: loadingToast }); }
     };
 
-    // ĐÃ SỬA: MODAL XÓA BÀI ĐĂNG SIÊU ĐẸP
     const handleDeletePost = (postId) => {
         toast((t) => (
             <div className="flex flex-col gap-3 min-w-[250px] p-2">
                 <div className="flex flex-col items-center gap-2">
-                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-2xl">
-                        <i className="ri-delete-bin-line"></i>
-                    </div>
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-2xl"><i className="ri-delete-bin-line"></i></div>
                     <p className="text-[15px] font-bold text-slate-800 text-center">Xóa bài đăng này?</p>
                     <p className="text-xs text-slate-500 text-center px-2">Khoảnh khắc này sẽ biến mất vĩnh viễn khỏi Dfeed.</p>
                 </div>
@@ -952,7 +990,6 @@ export default function Home() {
                 </button>
             ) : (
                 <>
-                    {/* HIỆU ỨNG VÒNG TRÒN CHẠY KHI ĐANG QUAY */}
                     <div 
                         className={`transition-all duration-[50ms] ${isRecording ? 'p-1.5 md:p-2 rounded-[46px] md:rounded-full shadow-[0_0_30px_rgba(245,158,11,0.5)] scale-105' : 'p-0 rounded-[40px] md:rounded-full scale-100'}`}
                         style={{ background: isRecording ? `conic-gradient(from 0deg, #f59e0b ${recordingProgress}%, transparent ${recordingProgress}%)` : 'transparent' }}
@@ -960,15 +997,24 @@ export default function Home() {
                         <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
                             {!capturedImage && !capturedVideo ? (
                                 <video ref={(el) => { if (isMobileOverlay) mobileVideoRef.current = el; else desktopVideoRef.current = el; if (el && locketStream && el.srcObject !== locketStream) el.srcObject = locketStream; }} autoPlay playsInline muted className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} />
-                            ) : capturedVideo ? ( <video src={capturedVideo} autoPlay loop playsInline className="w-full h-full object-cover" /> ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
+                            ) : capturedVideo ? ( 
+                                /* ĐÃ SỬA: BẬT CONTROLS ĐỂ ĐIỆN THOẠI CHO PHÉP PLAY VIDEO, KHÔNG BỊ ĐEN NỮA */
+                                <video src={capturedVideo} controls autoPlay playsInline className="w-full h-full object-cover" /> 
+                            ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                         </div>
                     </div>
 
                     {!capturedImage && !capturedVideo ? (
                         <div className="flex gap-6 items-center mt-8">
                             <div className="w-10"></div> 
-                            <button onMouseDown={startRecording} onMouseUp={stopRecording} onTouchStart={startRecording} onTouchEnd={stopRecording} onClick={captureLocketPhoto} className="w-16 h-16 bg-white hover:bg-slate-200 border-4 border-slate-700 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-90 transition-all flex items-center justify-center group">
-                                <div className={`w-12 h-12 rounded-full border-[3px] border-slate-300 transition-colors ${isRecording ? 'bg-red-500 border-red-400' : 'group-hover:border-slate-400'}`}></div>
+                            {/* ĐÃ SỬA: SỬ DỤNG POINTER EVENTS CHỐNG LỖI ĐỤNG ĐỘ */}
+                            <button 
+                                onPointerDown={handlePointerDown} 
+                                onPointerUp={handlePointerUp}
+                                onPointerLeave={handlePointerUp}
+                                className="w-16 h-16 bg-white hover:bg-slate-200 border-4 border-slate-700 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all flex items-center justify-center group touch-none select-none"
+                            >
+                                <div className={`w-12 h-12 rounded-full border-[3px] border-slate-300 transition-all ${isRecording ? 'bg-red-500 border-red-400 scale-90' : 'group-hover:border-slate-400'}`}></div>
                             </button>
                             <button onClick={toggleDcamLens} className="w-10 h-10 bg-slate-800 text-slate-300 rounded-full text-lg hover:bg-slate-700 hover:text-white transition-all"><i className="ri-refresh-line"></i></button>
                         </div>

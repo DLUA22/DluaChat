@@ -157,6 +157,15 @@ export default function Home() {
     // ==========================================
 
     useEffect(() => {
+        const appVersion = localStorage.getItem('app_version');
+        if (appVersion !== 'v2') {
+            console.warn("Phát hiện phiên bản cũ, tự động dọn dẹp!");
+            localStorage.clear();
+            sessionStorage.clear();
+            localStorage.setItem('app_version', 'v2');
+            window.location.replace('/login');
+            return;
+        }
         const loggedInUser = localStorage.getItem('user') || sessionStorage.getItem('user');
         
         if (!loggedInUser) {

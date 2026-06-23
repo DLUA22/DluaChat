@@ -130,6 +130,7 @@ export default function Home() {
     const [recordingProgress, setRecordingProgress] = useState(0); 
     const progressIntervalRef = useRef(null);
     const pressTimerRef = useRef(null);
+    const [isPublishReady, setIsPublishReady] = useState(false);
 
     // 4. STATES: WebRTC & Call
     const [callStatus, setCallStatus] = useState('idle'); 
@@ -603,6 +604,8 @@ export default function Home() {
         
         setCapturedImage(canvas.toDataURL('image/jpeg'));
         if (locketStream) locketStream.getTracks().forEach(track => track.stop());
+        setIsPublishReady(false);
+        setTimeout(() => setIsPublishReady(true), 500);
     };
 
     // 4.2 Giữ nút để Quay Video 5s
@@ -620,14 +623,20 @@ export default function Home() {
             };
             
             mediaRecorder.onstop = () => {
-                // SỬA LỖI ĐEN THUI: Tự động lấy đúng đuôi video mà điện thoại đang dùng
-                const mimeType = mediaRecorderRef.current.mimeType || 'video/webm';
+                let mimeType = mediaRecorder.mimeType;
+                if (!mimeType) {
+                    mimeType = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm';
+                }
                 const blob = new Blob(videoChunksRef.current, { type: mimeType });
                 setCapturedVideo(window.URL.createObjectURL(blob));
                 
                 if (locketStream) locketStream.getTracks().forEach(track => track.stop());
                 setIsRecording(false);
                 clearInterval(progressIntervalRef.current); setRecordingProgress(0);
+
+                // Khóa nút Đăng 0.5 giây sau khi quay xong
+                setIsPublishReady(false);
+                setTimeout(() => setIsPublishReady(true), 500);
             };
 
             mediaRecorder.start(100); 
@@ -653,10 +662,11 @@ export default function Home() {
     };
 
     const stopRecording = () => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") mediaRecorderRef.current.stop();
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+            mediaRecorderRef.current.stop();
+        }
     };
 
-    // 4.3 THUẬT TOÁN TÁCH BIỆT CHẠM (CHỤP) VÀ GIỮ (QUAY)
     const handlePointerDown = (e) => {
         pressTimerRef.current = setTimeout(() => {
             startRecording();
@@ -665,7 +675,7 @@ export default function Home() {
     };
 
     const handlePointerUp = (e) => {
-        e.preventDefault();
+        if (e && e.preventDefault) e.preventDefault();
         if (pressTimerRef.current) {
             clearTimeout(pressTimerRef.current);
             pressTimerRef.current = null;
@@ -674,7 +684,6 @@ export default function Home() {
             stopRecording();
         }
     };
-
     // 5. Đăng bài lên Dfeed
     const handlePublishPost = async () => {
         if (!capturedImage && !capturedVideo) return;
@@ -1002,13 +1011,20 @@ export default function Home() {
                     >
                         <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
                             {!capturedImage && !capturedVideo ? (
-                                <video 
-                                ref={isMobileOverlay ? mobileVideoRef : desktopVideoRef} 
-                                autoPlay playsInline muted 
-                                className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} 
-                            />
+                                <video ref={(el) => { if (isMobileOverlay) mobileVideoRef.current = el; else desktopVideoRef.current = el; if (el && locketStream && el.srcObject !== locketStream) el.srcObject = locketStream; }} autoPlay playsInline muted className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} />
                             ) : capturedVideo ? ( 
-                                <video src={capturedVideo} autoPlay loop muted playsInline className="w-full h-full object-cover" /> 
+                                <video 
+                                    src={capturedVideo} 
+                                    ref={(el) => {
+                                        if (el) {
+                                            el.defaultMuted = true;
+                                            el.muted = true;
+                                            el.play().catch(() => {});
+                                        }
+                                    }}
+                                    loop playsInline 
+                                    className="w-full h-full object-cover" 
+                                /> 
                             ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                         </div>
                     </div>
@@ -1016,7 +1032,6 @@ export default function Home() {
                     {!capturedImage && !capturedVideo ? (
                         <div className="flex gap-6 items-center mt-8">
                             <div className="w-10"></div> 
-                            {/* ĐÃ SỬA: SỬ DỤNG POINTER EVENTS CHỐNG LỖI ĐỤNG ĐỘ */}
                             <button 
                                 onPointerDown={handlePointerDown} 
                                 onPointerUp={handlePointerUp}
@@ -1031,7 +1046,13 @@ export default function Home() {
                         <div className="w-full mt-6 space-y-3 px-2">
                             <input type="text" placeholder="Thêm mô tả cho Dfeed..." value={locketCaption} onChange={(e) => setLocketCaption(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-3 px-4 text-sm outline-none text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder-slate-500" />
                             <div className="flex gap-3">
-                                <button onClick={handlePublishPost} className="flex-1 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold py-3 rounded-2xl text-sm shadow-lg active:scale-95 transition-all">🚀 Đăng lên</button>
+                                {/* NÚT ĐĂNG ĐÃ ĐƯỢC KHÓA BẢO VỆ 0.5s */}
+                                <button 
+                                    onClick={() => { if (isPublishReady) handlePublishPost(); }} 
+                                    className={`flex-1 bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold py-3 rounded-2xl text-sm shadow-lg transition-all ${isPublishReady ? 'hover:from-amber-600 hover:to-orange-700 active:scale-95' : 'opacity-50 grayscale cursor-not-allowed'}`}
+                                >
+                                    🚀 {isPublishReady ? 'Đăng lên' : 'Đang tải...'}
+                                </button>
                                 <button onClick={() => startLocketCamera(false)} className="w-12 h-12 shrink-0 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl text-lg transition-colors flex items-center justify-center"><i className="ri-delete-bin-line"></i></button>
                             </div>
                         </div>

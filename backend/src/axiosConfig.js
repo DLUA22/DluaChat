@@ -1,5 +1,4 @@
 import axios from 'axios';
-import toast from 'react-hot-toast';
 
 const instance = axios.create({
     baseURL: 'https://dlua-chat-api.onrender.com'
@@ -21,27 +20,18 @@ instance.interceptors.request.use(
 instance.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response) {
-            const status = error.response.status;
-            if (status === 401 || status === 403) {
-                localStorage.clear();
-                sessionStorage.clear();
-                window.location.href = '/login';
-            } 
-            else if (status === 502 || status === 503) {
-                toast.error("Máy chủ đang khởi động, vui lòng chờ...");
-            }
-        } 
-        else if (error.message === 'Network Error') {
-            if (error.config.url.includes('/messages')) {
-                console.warn("Phát hiện Token hết hạn ẩn, tự động làm sạch...");
-                localStorage.clear();
-                sessionStorage.clear();
-                window.location.href = '/login';
-            } else {
-                toast.error("Đang kết nối lại với máy chủ...");
-            }
+        const isAuthError = 
+            (error.response && (error.response.status === 401 || error.response.status === 403)) ||
+            (error.message === 'Network Error' && error.config?.url?.includes('/messages'));
+
+        if (isAuthError) {
+            console.error("Token đã hết hạn hoặc không hợp lệ. Đang đá văng ra ngoài!");
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.replace('/login'); 
+            return new Promise(() => {}); 
         }
+        
         return Promise.reject(error);
     }
 );

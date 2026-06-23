@@ -578,7 +578,8 @@ export default function Home() {
     useEffect(() => { if (activeTab !== 'locket' && isCameraOpen) stopLocketCamera(); }, [activeTab]);
 
     const toggleDcamLens = () => {
-        stopLocketCamera(); setIsDcamFront(!isFrontCamera);
+        stopLocketCamera();
+        setIsFrontCamera(prev => !prev);
         setTimeout(() => startLocketCamera(!isFrontCamera), 500);
     };
 
@@ -998,8 +999,7 @@ export default function Home() {
                             {!capturedImage && !capturedVideo ? (
                                 <video ref={(el) => { if (isMobileOverlay) mobileVideoRef.current = el; else desktopVideoRef.current = el; if (el && locketStream && el.srcObject !== locketStream) el.srcObject = locketStream; }} autoPlay playsInline muted className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} />
                             ) : capturedVideo ? ( 
-                                /* ĐÃ SỬA: BẬT CONTROLS ĐỂ ĐIỆN THOẠI CHO PHÉP PLAY VIDEO, KHÔNG BỊ ĐEN NỮA */
-                                <video src={capturedVideo} controls autoPlay playsInline className="w-full h-full object-cover" /> 
+                                <video src={capturedVideo} autoPlay loop muted playsInline className="w-full h-full object-cover" /> 
                             ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                         </div>
                     </div>

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import toast from 'react-hot-toast'; // Phải import cái này để hiện thông báo
+import toast from 'react-hot-toast';
 
 const instance = axios.create({
     baseURL: 'https://dlua-chat-api.onrender.com'
@@ -11,9 +11,7 @@ instance.interceptors.request.use(
         if (userStr) {
             const user = JSON.parse(userStr);
             const token = user.token || user.accessToken; 
-            if (token) {
-                config.headers['Authorization'] = `Bearer ${token}`;
-            }
+            if (token) config.headers['Authorization'] = `Bearer ${token}`;
         }
         return config;
     },
@@ -23,16 +21,26 @@ instance.interceptors.request.use(
 instance.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (!error.response) {
-            toast.error("Đang kết nối lại Server. Vui lòng đợi chút nhé...", { id: 'network_err', duration: 4000 });
+        if (error.response) {
+            const status = error.response.status;
+            if (status === 401 || status === 403) {
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.href = '/login';
+            } 
+            else if (status === 502 || status === 503) {
+                toast.error("Máy chủ đang khởi động, vui lòng chờ...");
+            }
         } 
-        else if (error.response.status >= 500) {
-            toast.error("Hệ thống đang cập nhật. Vui lòng thử lại sau 1-2 phút!", { id: 'server_err', duration: 4000 });
-        }
-        else if (error.response.status === 401 || error.response.status === 403) {
-            localStorage.clear();
-            sessionStorage.clear();
-            window.location.href = '/login';
+        else if (error.message === 'Network Error') {
+            if (error.config.url.includes('/messages')) {
+                console.warn("Phát hiện Token hết hạn ẩn, tự động làm sạch...");
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.href = '/login';
+            } else {
+                toast.error("Đang kết nối lại với máy chủ...");
+            }
         }
         return Promise.reject(error);
     }

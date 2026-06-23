@@ -1015,8 +1015,7 @@ export default function Home() {
         if (!f || !f.fullName) return false;
         return f.fullName.toLowerCase().includes((localChatSearch || '').toLowerCase());
     });
-    
-    // ĐÃ SỬA CHUẨN: Lấy điều kiện Đã xem mới bằng mảng readBy
+    const lastMessage = messages[messages.length - 1];
     const isLastMessageRead = lastMessage && getSenderId(lastMessage.senderId) === user.id && (
         (lastMessage.readBy && lastMessage.readBy.length > 0) || lastMessage.isRead
     );

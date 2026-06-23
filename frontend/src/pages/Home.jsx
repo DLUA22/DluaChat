@@ -1031,12 +1031,15 @@ export default function Home() {
                             {!capturedImage && !capturedVideo ? (
                                 <video ref={(el) => { if (isMobileOverlay) mobileVideoRef.current = el; else desktopVideoRef.current = el; if (el && locketStream && el.srcObject !== locketStream) el.srcObject = locketStream; }} autoPlay playsInline muted className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} />
                             ) : capturedVideo ? ( 
-                                /* BÍ KÍP TRỊ MÀN HÌNH ĐEN: Đã thêm controls nhưng giấu nó đi bằng class CSS */
                                 <video 
+                                    key={capturedVideo} 
                                     src={capturedVideo} 
                                     autoPlay loop muted playsInline 
                                     controls 
-                                    className="w-[110%] h-[110%] object-cover" // Zoom nhẹ lên để giấu thanh controls
+                                    onLoadedData={(e) => {
+                                        e.target.play().catch(err => console.log("Lỗi autoplay:", err));
+                                    }}
+                                    className="w-[110%] h-[110%] object-cover bg-slate-800" 
                                 /> 
                             ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                         </div>

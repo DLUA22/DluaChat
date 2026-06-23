@@ -561,6 +561,11 @@ export default function Home() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480, facingMode: "user" }, audio: false });
             setLocketStream(stream);
+            setTimeout(() => {
+                // Nhồi video vào cả 2 ống hút
+                if (desktopVideoRef.current) desktopVideoRef.current.srcObject = stream;
+                if (mobileVideoRef.current) mobileVideoRef.current.srcObject = stream;
+            }, 100);
         } catch (err) {
             toast.error("Không thể truy cập Camera. Bạn có thể chọn file ảnh tải lên!");
         }
@@ -580,11 +585,7 @@ export default function Home() {
     const captureLocketPhoto = () => {
         const isDesktop = window.innerWidth >= 768;
         const video = isDesktop ? desktopVideoRef.current : mobileVideoRef.current;
-        
-        if (!video) {
-            toast.error("Lỗi: Không tìm thấy luồng Camera!");
-            return;
-        }
+        if (!video) return;
         const canvas = document.createElement('canvas');
         canvas.width = 480;
         canvas.height = 480;

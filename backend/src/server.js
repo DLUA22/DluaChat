@@ -14,6 +14,7 @@ const authRoutes = require('./routes/authRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const postRoutes = require('./routes/postRoutes');
+const gameRoutes = require('./routes/gameRoutes');
 
 const app = express();
 
@@ -64,6 +65,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/posts', postRoutes);
+app.use('/api/games', gameRoutes);
+
 
 app.post('/api/notifications/subscribe', (req, res) => {
     const { userId, subscription } = req.body;

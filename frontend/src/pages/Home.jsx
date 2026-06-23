@@ -595,11 +595,9 @@ export default function Home() {
     };
 
     const captureLocketPhoto = () => {
-        console.log("📸 [DEBUG] Bắt đầu chụp ảnh...");
         const isDesktop = window.innerWidth >= 768;
         const video = isDesktop ? desktopVideoRef.current : mobileVideoRef.current;
         if (!video || !video.srcObject) {
-            console.error("📸 [DEBUG LỖI] Không tìm thấy video source!");
             return;
         }
         
@@ -614,14 +612,12 @@ export default function Home() {
 
         setIsPublishReady(false);
         setTimeout(() => setIsPublishReady(true), 1000);
-        console.log("📸 [DEBUG] Chụp ảnh thành công!");
     };
 
     // 4.2 Giữ nút để Quay Video 5s
     const startRecording = () => {
-        console.log("🎥 [DEBUG] Gọi startRecording...");
-        if (!locketStream || !locketStream.active) return console.log("🎥 [DEBUG] Lỗi: Stream không active");
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") return console.log("🎥 [DEBUG] Đang quay rồi, bỏ qua!");
+        if (!locketStream || !locketStream.active) return;
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") return;
 
         videoChunksRef.current = [];
         try {
@@ -630,13 +626,10 @@ export default function Home() {
 
             mediaRecorder.ondataavailable = (event) => { 
                 if (event.data && event.data.size > 0) videoChunksRef.current.push(event.data); 
-            };
-            
+            };          
             mediaRecorder.onstop = () => {
-                console.log("🎥 [DEBUG] Đã stop MediaRecorder. Xử lý Blob...");
                 let mimeType = mediaRecorder.mimeType;
                 if (!mimeType) mimeType = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm';
-                
                 const blob = new Blob(videoChunksRef.current, { type: mimeType });
                 const videoUrl = window.URL.createObjectURL(blob);
                 setCapturedVideo(videoUrl);
@@ -644,12 +637,10 @@ export default function Home() {
                 if (locketStream) locketStream.getTracks().forEach(track => track.stop());
                 setIsRecording(false);
                 clearInterval(progressIntervalRef.current); setRecordingProgress(0);
-                setIsPublishReady(true); // Đã có file, sẵn sàng đăng!
+                setIsPublishReady(true);
             };
-
             mediaRecorder.start(100); 
             setIsRecording(true);
-
             setRecordingProgress(0);
             progressIntervalRef.current = setInterval(() => {
                 setRecordingProgress(prev => {
@@ -664,13 +655,11 @@ export default function Home() {
                 }
             }, 5000);
         } catch(err) {
-            console.error("🎥 [DEBUG LỖI] MediaRecorder:", err);
             toast.error("Trình duyệt không hỗ trợ quay video!");
         }
     };
 
     const stopRecording = () => {
-        console.log("🎥 [DEBUG] Gọi stopRecording...");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
             mediaRecorderRef.current.stop();
         }
@@ -678,27 +667,20 @@ export default function Home() {
 
     // 4.3 THUẬT TOÁN MỚI: TÁCH BIỆT PC & MOBILE, CHỐNG CLICK MA TUYỆT ĐỐI
     const handlePressStart = (e) => {
-        // e.preventDefault() ở đây nếu có thể gây lỗi scroll trên mobile, nên ta không dùng
-        console.log("👆 [DEBUG] Press START", e.type);
         pressTimerRef.current = setTimeout(() => {
-            console.log("👆 [DEBUG] Kích hoạt QUAY VIDEO");
             startRecording();
             pressTimerRef.current = null; 
         }, 300);
     };
 
     const handlePressEnd = (e) => {
-        if (e.cancelable) e.preventDefault(); // CHẶN GHOST CLICK NGAY LẬP TỨC
-        console.log("👆 [DEBUG] Press END", e.type);
-        
+        if (e.cancelable) e.preventDefault();        
         if (pressTimerRef.current) {
-            console.log("👆 [DEBUG] CHỤP ẢNH");
             clearTimeout(pressTimerRef.current);
             pressTimerRef.current = null;
             captureLocketPhoto();
-            setIsPublishReady(true); // Chụp xong là đăng được ngay
+            setIsPublishReady(true);
         } else {
-            console.log("👆 [DEBUG] DỪNG QUAY VIDEO");
             stopRecording();
         }
     };
@@ -715,7 +697,7 @@ export default function Home() {
             
             const uploadRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/upload', formData);
             await axios.post('https://dlua-chat-api.onrender.com/api/posts/create', { author: user.id, imageUrl: uploadRes.data.url, caption: locketCaption });
-            toast.success("Khoảnh khắc đã lên sóng! ✨", { id: loadingToast });
+            toast.success("Đã tải xong", { id: loadingToast });
             setLocketCaption(''); stopLocketCamera(); fetchFeed();
         } catch (err) { toast.error("Đăng thất bại!", { id: loadingToast }); }
     };
@@ -1027,7 +1009,7 @@ export default function Home() {
                         className={`transition-all duration-[50ms] ${isRecording ? 'p-1.5 md:p-2 rounded-[46px] md:rounded-full shadow-[0_0_30px_rgba(245,158,11,0.5)] scale-105' : 'p-0 rounded-[40px] md:rounded-full scale-100'}`}
                         style={{ background: isRecording ? `conic-gradient(from 0deg, #f59e0b ${recordingProgress}%, transparent ${recordingProgress}%)` : 'transparent' }}
                     >
-                        <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-slate-800 border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
+                        <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
                             {!capturedImage && !capturedVideo ? (
                                 <video ref={(el) => { if (isMobileOverlay) mobileVideoRef.current = el; else desktopVideoRef.current = el; if (el && locketStream && el.srcObject !== locketStream) el.srcObject = locketStream; }} autoPlay playsInline muted className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} />
                             ) : capturedVideo ? ( 
@@ -1036,10 +1018,8 @@ export default function Home() {
                                     src={capturedVideo} 
                                     autoPlay loop muted playsInline 
                                     controls 
-                                    onLoadedData={(e) => {
-                                        e.target.play().catch(err => console.log("Lỗi autoplay:", err));
-                                    }}
-                                    className="w-[110%] h-[110%] object-cover bg-slate-800" 
+                                    onLoadedData={(e) => e.target.play().catch(()=>{})}
+                                    className="w-[120%] h-[120%] object-cover pointer-events-none bg-black" 
                                 /> 
                             ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                         </div>

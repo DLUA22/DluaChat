@@ -637,25 +637,18 @@ export default function Home() {
                 let mimeType = mediaRecorder.mimeType;
                 if (!mimeType) mimeType = MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : 'video/webm';
                 
-                console.log("🎥 [DEBUG] MimeType đang dùng:", mimeType);
                 const blob = new Blob(videoChunksRef.current, { type: mimeType });
-                console.log("🎥 [DEBUG] Kích thước Blob (bytes):", blob.size);
-                
                 const videoUrl = window.URL.createObjectURL(blob);
-                console.log("🎥 [DEBUG] Blob URL tạo ra:", videoUrl);
                 setCapturedVideo(videoUrl);
                 
                 if (locketStream) locketStream.getTracks().forEach(track => track.stop());
                 setIsRecording(false);
                 clearInterval(progressIntervalRef.current); setRecordingProgress(0);
-
-                setIsPublishReady(false);
-                setTimeout(() => setIsPublishReady(true), 500);
+                setIsPublishReady(true); // Đã có file, sẵn sàng đăng!
             };
 
             mediaRecorder.start(100); 
             setIsRecording(true);
-            console.log("🎥 [DEBUG] MediaRecorder ĐÃ START thành công!");
 
             setRecordingProgress(0);
             progressIntervalRef.current = setInterval(() => {
@@ -667,7 +660,6 @@ export default function Home() {
 
             setTimeout(() => {
                 if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-                    console.log("🎥 [DEBUG] Hết 5s -> Tự động dừng quay");
                     mediaRecorderRef.current.stop();
                 }
             }, 5000);
@@ -684,35 +676,29 @@ export default function Home() {
         }
     };
 
-    // 4.3 THUẬT TOÁN CHỐNG CLICK MA
-    const handlePointerDown = (e) => {
-        console.log("👆 [DEBUG] Pointer DOWN", e.type);
+    // 4.3 THUẬT TOÁN MỚI: TÁCH BIỆT PC & MOBILE, CHỐNG CLICK MA TUYỆT ĐỐI
+    const handlePressStart = (e) => {
+        // e.preventDefault() ở đây nếu có thể gây lỗi scroll trên mobile, nên ta không dùng
+        console.log("👆 [DEBUG] Press START", e.type);
         pressTimerRef.current = setTimeout(() => {
-            console.log("👆 [DEBUG] Nhấn GIỮ quá 300ms -> Kích hoạt QUAY VIDEO");
+            console.log("👆 [DEBUG] Kích hoạt QUAY VIDEO");
             startRecording();
             pressTimerRef.current = null; 
         }, 300);
     };
 
-    const handlePointerUp = (e) => {
-        console.log("👆 [DEBUG] Pointer UP", e.type);
-        if (e && e.preventDefault) e.preventDefault();
+    const handlePressEnd = (e) => {
+        if (e.cancelable) e.preventDefault(); // CHẶN GHOST CLICK NGAY LẬP TỨC
+        console.log("👆 [DEBUG] Press END", e.type);
         
-        // CHỐNG CLICK MA: Nếu 2 lần chạm cách nhau dưới 500ms -> Chặn ngay lập tức!
-        const now = Date.now();
-        if (now - lastActionTime.current < 500) {
-            console.log("👆 [DEBUG] Bỏ qua Ghost Click do thao tác quá nhanh!");
-            return;
-        }
-        lastActionTime.current = now;
-
         if (pressTimerRef.current) {
-            console.log("👆 [DEBUG] Nhả tay sớm (<300ms) -> CHỤP ẢNH");
+            console.log("👆 [DEBUG] CHỤP ẢNH");
             clearTimeout(pressTimerRef.current);
             pressTimerRef.current = null;
             captureLocketPhoto();
+            setIsPublishReady(true); // Chụp xong là đăng được ngay
         } else {
-            console.log("👆 [DEBUG] Nhả tay muộn (>300ms) -> DỪNG QUAY VIDEO");
+            console.log("👆 [DEBUG] DỪNG QUAY VIDEO");
             stopRecording();
         }
     };
@@ -1041,14 +1027,16 @@ export default function Home() {
                         className={`transition-all duration-[50ms] ${isRecording ? 'p-1.5 md:p-2 rounded-[46px] md:rounded-full shadow-[0_0_30px_rgba(245,158,11,0.5)] scale-105' : 'p-0 rounded-[40px] md:rounded-full scale-100'}`}
                         style={{ background: isRecording ? `conic-gradient(from 0deg, #f59e0b ${recordingProgress}%, transparent ${recordingProgress}%)` : 'transparent' }}
                     >
-                        <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
+                        <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-slate-800 border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
                             {!capturedImage && !capturedVideo ? (
                                 <video ref={(el) => { if (isMobileOverlay) mobileVideoRef.current = el; else desktopVideoRef.current = el; if (el && locketStream && el.srcObject !== locketStream) el.srcObject = locketStream; }} autoPlay playsInline muted className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} />
                             ) : capturedVideo ? ( 
+                                /* BÍ KÍP TRỊ MÀN HÌNH ĐEN: Đã thêm controls nhưng giấu nó đi bằng class CSS */
                                 <video 
                                     src={capturedVideo} 
                                     autoPlay loop muted playsInline 
-                                    className="w-full h-full object-cover bg-slate-800" 
+                                    controls 
+                                    className="w-[110%] h-[110%] object-cover" // Zoom nhẹ lên để giấu thanh controls
                                 /> 
                             ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                         </div>
@@ -1058,9 +1046,11 @@ export default function Home() {
                         <div className="flex gap-6 items-center mt-8">
                             <div className="w-10"></div> 
                             <button 
-                                onPointerDown={handlePointerDown} 
-                                onPointerUp={handlePointerUp}
-                                onPointerLeave={handlePointerUp}
+                                onTouchStart={handlePressStart} 
+                                onTouchEnd={handlePressEnd}
+                                onMouseDown={handlePressStart}
+                                onMouseUp={handlePressEnd}
+                                onMouseLeave={handlePressEnd} // Ngăn trường hợp di chuột ra ngoài nút
                                 className="w-16 h-16 bg-white hover:bg-slate-200 border-4 border-slate-700 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all flex items-center justify-center group touch-none select-none"
                             >
                                 <div className={`w-12 h-12 rounded-full border-[3px] border-slate-300 transition-all ${isRecording ? 'bg-red-500 border-red-400 scale-90' : 'group-hover:border-slate-400'}`}></div>
@@ -1071,12 +1061,11 @@ export default function Home() {
                         <div className="w-full mt-6 space-y-3 px-2">
                             <input type="text" placeholder="Thêm mô tả cho Dfeed..." value={locketCaption} onChange={(e) => setLocketCaption(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-3 px-4 text-sm outline-none text-white focus:ring-2 focus:ring-amber-500 transition-all placeholder-slate-500" />
                             <div className="flex gap-3">
-                                {/* NÚT ĐĂNG ĐÃ ĐƯỢC KHÓA BẢO VỆ 0.5s */}
                                 <button 
                                     onClick={() => { if (isPublishReady) handlePublishPost(); }} 
                                     className={`flex-1 bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold py-3 rounded-2xl text-sm shadow-lg transition-all ${isPublishReady ? 'hover:from-amber-600 hover:to-orange-700 active:scale-95' : 'opacity-50 grayscale cursor-not-allowed'}`}
                                 >
-                                    🚀 {isPublishReady ? 'Đăng lên' : 'Đang tải...'}
+                                    Đăng lên
                                 </button>
                                 <button onClick={() => startLocketCamera(false)} className="w-12 h-12 shrink-0 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl text-lg transition-colors flex items-center justify-center"><i className="ri-delete-bin-line"></i></button>
                             </div>

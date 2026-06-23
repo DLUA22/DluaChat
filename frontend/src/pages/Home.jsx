@@ -586,10 +586,12 @@ export default function Home() {
     }, [locketStream, recordingProgress]);
 
     const toggleDcamLens = () => {
-        stopLocketCamera();
-        const newMode = !isFrontCamera;
-        setIsFrontCamera(newMode);
-        setTimeout(() => startLocketCamera(!newMode), 500); 
+        setIsFrontCamera(prev => {
+            const nextMode = !prev;
+            stopLocketCamera();
+            setTimeout(() => startLocketCamera(!nextMode), 500); 
+            return nextMode;
+        });
     };
 
     const captureLocketPhoto = () => {
@@ -611,7 +613,7 @@ export default function Home() {
         if (locketStream) locketStream.getTracks().forEach(track => track.stop());
 
         setIsPublishReady(false);
-        setTimeout(() => setIsPublishReady(true), 500);
+        setTimeout(() => setIsPublishReady(true), 1000);
         console.log("📸 [DEBUG] Chụp ảnh thành công!");
     };
 
@@ -1045,16 +1047,7 @@ export default function Home() {
                             ) : capturedVideo ? ( 
                                 <video 
                                     src={capturedVideo} 
-                                    ref={(el) => {
-                                        if (el) {
-                                            console.log("📺 [DEBUG] Thẻ xem video đã xuất hiện. Ép load & play...");
-                                            el.load(); // Bắt buộc phải có dòng này trên một số điện thoại
-                                            el.play().catch(e => console.error("📺 [DEBUG LỖI] Không play được video xem lại:", e));
-                                        }
-                                    }}
-                                    loop playsInline muted
-                                    onLoadedData={() => console.log("📺 [DEBUG] Video đã load data thành công!")}
-                                    onError={(e) => console.error("📺 [DEBUG LỖI] Lỗi load thẻ Video:", e.nativeEvent)}
+                                    autoPlay loop muted playsInline 
                                     className="w-full h-full object-cover bg-slate-800" 
                                 /> 
                             ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}

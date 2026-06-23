@@ -13,6 +13,7 @@ const User = require('./models/User');
 const authRoutes = require('./routes/authRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const groupRoutes = require('./routes/groupRoutes');
+const postRoutes = require('./routes/postRoutes');
 
 const app = express();
 
@@ -23,14 +24,12 @@ connectDB();
 app.use(express.json());
 app.use(morgan('dev'));
 
-// Cấu hình Helmet nhưng cho phép tải tài liệu tĩnh từ thư mục uploads (nếu còn dùng local)
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
-// CẤU HÌNH CORS (Cho phép cả link chính và các link nháp của Vercel)
 const allowedOrigins = [
     "http://localhost:5173", 
     "https://dlua-chat.vercel.app",
-    /^https:\/\/dlua-chat.*\.vercel\.app$/ // Regex chấp nhận mọi sub-domain của vercel
+    /^https:\/\/dlua-chat.*\.vercel\.app$/
 ];
 
 const corsOptions = {
@@ -51,13 +50,12 @@ webpush.setVapidDetails(
     process.env.VAPID_PRIVATE_KEY
 );
 
-let userSubscriptions = {}; // Lưu trữ subscription của người dùng theo ID
+let userSubscriptions = {};
 
 // ==========================================
 // 3. KHAI BÁO CÁC ROUTES API
 // ==========================================
 
-// [QUAN TRỌNG]: Route gốc dùng để Cron-job "gõ cửa" giữ Server thức 24/7
 app.get('/', (req, res) => {
     res.status(200).send('DluaChat API is awake and running smoothly!');
 });
@@ -65,8 +63,8 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/groups', groupRoutes);
+app.use('/api/posts', postRoutes);
 
-// API lưu địa chỉ nhận thông báo (Web Push) từ Frontend
 app.post('/api/notifications/subscribe', (req, res) => {
     const { userId, subscription } = req.body;
     if (!userId || !subscription) {
@@ -147,10 +145,7 @@ io.on('connection', (socket) => {
         if (data.groupId) {
             socket.to(data.groupId).emit('receive_message', data);
         } else {
-            // 1. Gửi tin nhắn qua Socket.io theo thời gian thực
             socket.to(data.receiverId).emit('receive_message', data);
-
-            // 2. Bắn thông báo nổi bảo mật
             const sub = userSubscriptions[data.receiverId];
             if (sub) {
                 let messageBody = "Đã gửi cho bạn một tin nhắn";
@@ -203,8 +198,6 @@ io.on('connection', (socket) => {
     socket.on('call_user', (data) => {
         activeCalls[data.from] = data; 
         socket.to(data.userToCall).emit('call_incoming', data);
-
-        // Bắn thông báo nổi nếu người nhận có đăng ký
         const sub = userSubscriptions[data.userToCall];
         if (sub) {
             const payload = JSON.stringify({

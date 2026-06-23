@@ -84,8 +84,13 @@ exports.respondRequest = async (req, res) => {
         const request = await FriendRequest.findById(requestId);
         if (!request) return res.status(404).json({ message: 'Yêu cầu không tồn tại!' });
         if (status === 'accepted') {
-            await User.findByIdAndUpdate(request.sender, { $addToSet: { friends: request.receiver } });
-            await User.findByIdAndUpdate(request.receiver, { $addToSet: { friends: request.sender } });
+            const now = new Date();
+            await User.findByIdAndUpdate(request.sender, { 
+                $push: { friends: { userId: request.receiver, friendSince: now } } 
+            });
+            await User.findByIdAndUpdate(request.receiver, { 
+                $push: { friends: { userId: request.sender, friendSince: now } } 
+            });
             await FriendRequest.findByIdAndDelete(requestId);
             return res.status(200).json({ message: 'Đã kết bạn!' });
         } else {
@@ -107,8 +112,8 @@ exports.getFriends = async (req, res) => {
 exports.unfriend = async (req, res) => {
     try {
         const { userId, friendId } = req.body;
-        await User.findByIdAndUpdate(userId, { $pull: { friends: friendId } });
-        await User.findByIdAndUpdate(friendId, { $pull: { friends: userId } });
+        await User.findByIdAndUpdate(userId, { $pull: { friends: { userId: friendId } } });
+        await User.findByIdAndUpdate(friendId, { $pull: { friends: { userId: userId } } });
         res.status(200).json({ message: 'Đã xóa bạn bè' });
     } catch (error) { res.status(500).json({ message: 'Lỗi server khi xóa' }); }
 };

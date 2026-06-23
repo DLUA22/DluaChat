@@ -6,7 +6,10 @@ const userSchema = new mongoose.Schema({
     uniqueName: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     avatar: { type: String, default: null },
-    friends: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    friends: [{ 
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        friendSince: { type: Date, default: Date.now }
+    }],
     
     isOnline: { type: Boolean, default: false },
     lastSeen: { type: Date, default: null }

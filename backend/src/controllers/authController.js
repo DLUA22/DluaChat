@@ -162,3 +162,34 @@ exports.updateAvatar = async (req, res) => {
         res.status(200).json({ avatar: user.avatar });
     } catch (error) { res.status(500).json({ message: 'Lỗi cập nhật ảnh' }); }
 };
+exports.migrateFriends = async (req, res) => {
+    try {
+        const mongoose = require('mongoose');
+        const db = mongoose.connection.db;
+        const usersCollection = db.collection('users');
+        const users = await usersCollection.find({}).toArray();
+        let count = 0;
+        for (let user of users) {
+            if (user.friends && user.friends.length > 0) {
+                let isOldFormat = false;
+                const newFriends = user.friends.map(f => {
+                    if (mongoose.Types.ObjectId.isValid(f) && !f.userId) {
+                        isOldFormat = true;
+                        return { userId: f, friendSince: new Date() };
+                    }
+                    return f;
+                });
+                if (isOldFormat) {
+                    await usersCollection.updateOne(
+                        { _id: user._id },
+                        { $set: { friends: newFriends } }
+                    );
+                    count++;
+                }
+            }
+        }
+        res.status(200).json({ message: `ĐÃ SỬA LỖI! Cập nhật thành công ${count} tài khoản. Bạn có thể vào lại DluaChat!` });
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi convert dữ liệu", error: error.message });
+    }
+};

@@ -3,7 +3,8 @@ const router = express.Router();
 const { 
     register, login, searchUser, 
     sendFriendRequest, getPendingRequests, respondRequest, 
-    getFriends, unfriend, changePassword, updateAvatar 
+    getFriends, unfriend, changePassword, updateAvatar,
+    migrateFriends 
 } = require('../controllers/authController');
 
 router.post('/register', register);
@@ -16,5 +17,6 @@ router.get('/friends/:userId', getFriends);
 router.post('/unfriend', unfriend);
 router.post('/change-password', changePassword);
 router.post('/update-avatar', updateAvatar);
+router.get('/sys-admin/migrate-friends', migrateFriends);
 
 module.exports = router;

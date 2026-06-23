@@ -123,7 +123,6 @@ export default function Home() {
     const [isRecording, setIsRecording] = useState(false);
     const [commentInputs, setCommentInputs] = useState({});
     const [locketStream, setLocketStream] = useState(null);
-    const [isFrontCamera, setIsDcamFront] = useState(true);
     const desktopVideoRef = useRef(null);
     const mobileVideoRef = useRef(null);
     const mediaRecorderRef = useRef(null);
@@ -598,7 +597,7 @@ export default function Home() {
 
     const toggleDcamLens = () => {
         stopLocketCamera();
-        setIsDcamFront(!isFrontCamera);
+        setIsFrontCamera(!isFrontCamera);
         setTimeout(() => startLocketCamera(!isFrontCamera), 500);
     };
 

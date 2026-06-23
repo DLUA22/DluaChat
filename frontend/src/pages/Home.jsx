@@ -576,11 +576,18 @@ export default function Home() {
     };
 
     useEffect(() => { if (activeTab !== 'locket' && isCameraOpen) stopLocketCamera(); }, [activeTab]);
+    useEffect(() => {
+        if (locketStream) {
+            if (desktopVideoRef.current && desktopVideoRef.current.srcObject !== locketStream) desktopVideoRef.current.srcObject = locketStream;
+            if (mobileVideoRef.current && mobileVideoRef.current.srcObject !== locketStream) mobileVideoRef.current.srcObject = locketStream;
+        }
+    }, [locketStream, recordingProgress]);
 
     const toggleDcamLens = () => {
         stopLocketCamera();
-        setIsFrontCamera(prev => !prev);
-        setTimeout(() => startLocketCamera(!isFrontCamera), 500);
+        const newMode = !isFrontCamera;
+        setIsFrontCamera(newMode);
+        setTimeout(() => startLocketCamera(!newMode), 500); 
     };
 
     const captureLocketPhoto = () => {
@@ -997,7 +1004,11 @@ export default function Home() {
                     >
                         <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
                             {!capturedImage && !capturedVideo ? (
-                                <video ref={(el) => { if (isMobileOverlay) mobileVideoRef.current = el; else desktopVideoRef.current = el; if (el && locketStream && el.srcObject !== locketStream) el.srcObject = locketStream; }} autoPlay playsInline muted className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} />
+                                <video 
+                                ref={isMobileOverlay ? mobileVideoRef : desktopVideoRef} 
+                                autoPlay playsInline muted 
+                                className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} 
+                            />
                             ) : capturedVideo ? ( 
                                 <video src={capturedVideo} autoPlay loop muted playsInline className="w-full h-full object-cover" /> 
                             ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}

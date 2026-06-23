@@ -60,9 +60,10 @@ exports.searchUser = async (req, res) => {
 exports.sendFriendRequest = async (req, res) => {
     try {
         const { senderId, receiverId } = req.body;
-        if (senderId === receiverId) return res.status(400).json({ message: 'Không thể tự kết bạn!' });
+        if (senderId === receiverId) return res.status(400).json({ message: 'Không thể tự kết bạn!' }); 
         const sender = await User.findById(senderId);
-        if (sender.friends.includes(receiverId)) return res.status(400).json({ message: 'Đã là bạn bè rồi!' });
+        const isAlreadyFriend = sender.friends.some(f => f.userId.toString() === receiverId);
+        if (isAlreadyFriend) return res.status(400).json({ message: 'Đã là bạn bè rồi!' });     
         const newRequest = new FriendRequest({ sender: senderId, receiver: receiverId });
         await newRequest.save();
         res.status(201).json({ message: 'Đã gửi lời mời!' });
@@ -103,9 +104,17 @@ exports.respondRequest = async (req, res) => {
 // 7. Lấy danh sách bạn bè
 exports.getFriends = async (req, res) => {
     try {
-        const user = await User.findById(req.params.userId).populate('friends', 'fullName uniqueName avatar isOnline lastSeen');
-        res.status(200).json(user.friends);
-    } catch (error) { res.status(500).json({ message: 'Lỗi server' }); }
+        const user = await User.findById(req.params.userId)
+            .populate('friends.userId', 'fullName uniqueName avatar isOnline lastSeen');       
+        if (!user) return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+        const formattedFriends = user.friends
+            .map(f => f.userId)
+            .filter(f => f !== null);
+        res.status(200).json(formattedFriends);
+    } catch (error) { 
+        console.error(error);
+        res.status(500).json({ message: 'Lỗi server' }); 
+    }
 };
 
 // 8. Xóa bạn bè

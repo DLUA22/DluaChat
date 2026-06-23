@@ -1011,7 +1011,7 @@ export default function Home() {
     // RENDER: GIAO DIỆN CHÍNH
     // ==========================================
     if (!user) return null;
-    const combinedChatList = [...friends, ...groups].filter(f => f.fullName.toLowerCase().includes(localChatSearch.toLowerCase()));
+    const combinedChatList = [...friends, ...groups].filter(f => f?.fullName?.toLowerCase().includes(localChatSearch.toLowerCase()));
     const lastMessage = messages[messages.length - 1];
     
     // ĐÃ SỬA CHUẨN: Lấy điều kiện Đã xem mới bằng mảng readBy

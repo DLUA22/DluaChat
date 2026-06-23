@@ -115,6 +115,14 @@ export default function Home() {
     const [viewingMedia, setViewingMedia] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
 
+    const [posts, setPosts] = useState([]);
+    const [locketCaption, setLocketCaption] = useState('');
+    const [isCameraOpen, setIsCameraOpen] = useState(false);
+    const [capturedImage, setCapturedImage] = useState(null);
+    const [commentInputs, setCommentInputs] = useState({});
+    const [locketStream, setLocketStream] = useState(null);
+    const locketVideoRef = useRef(null);
+
     // 4. STATES: WebRTC & Call
     const [callStatus, setCallStatus] = useState('idle'); 
     const [isFrontCamera, setIsFrontCamera] = useState(true);
@@ -525,6 +533,114 @@ export default function Home() {
             setHasMore(fetchedMessages.length === 20);
         } catch (err) { console.error("Lỗi fetch message", err); }
         setIsLoadingMore(false);
+    };
+
+    // ==========================================
+    // LOGIC XỬ LÝ MẠNG XÃ HỘI
+    // ==========================================
+    
+    // 1. Tải bảng tin
+    const fetchFeed = async () => {
+        if (!user) return;
+        try {
+            const res = await axios.get(`https://dlua-chat-api.onrender.com/api/posts/feed/${user.id}`);
+            setPosts(res.data);
+        } catch (err) { console.error("Lỗi tải bảng tin:", err); }
+    };
+    useEffect(() => {
+        if (activeTab === 'locket') {
+            fetchFeed();
+        }
+    }, [activeTab]);
+
+    // 2. Mở Camera ống kính tròn 
+    const startLocketCamera = async () => {
+        setCapturedImage(null);
+        setIsCameraOpen(true);
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480, facingMode: "user" }, audio: false });
+            setLocketStream(stream);
+            setTimeout(() => {
+                if (locketVideoRef.current) locketVideoRef.current.srcObject = stream;
+            }, 100);
+        } catch (err) {
+            toast.error("Không thể truy cập Camera. Bạn có thể chọn file ảnh tải lên!");
+        }
+    };
+
+    // 3. Tắt Camera
+    const stopLocketCamera = () => {
+        if (locketStream) {
+            locketStream.getTracks().forEach(track => track.stop());
+            setLocketStream(null);
+        }
+        setIsCameraOpen(false);
+        setCapturedImage(null);
+    };
+
+    // 4. Bấm nút Chụp ảnh
+    const captureLocketPhoto = () => {
+        if (!locketVideoRef.current) return;
+        const video = locketVideoRef.current;
+        const canvas = document.createElement('canvas');
+        canvas.width = 480;
+        canvas.height = 480;
+        const ctx = canvas.getContext('2d');
+        ctx.translate(480, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, 480, 480);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setCapturedImage(dataUrl);
+        if (locketStream) {
+            locketStream.getTracks().forEach(track => track.stop());
+            setLocketStream(null);
+        }
+    };
+    const handlePublishPost = async () => {
+        if (!capturedImage) return;
+        const loadingToast = toast.loading("Đang bắn ảnh lên Locket...");
+        try {
+            const response = await fetch(capturedImage);
+            const blob = await response.blob();
+            const formData = new FormData();
+            formData.append('file', blob, 'locket.jpg');
+            const uploadRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/upload', formData);
+            const imageUrl = uploadRes.data.url;
+
+            await axios.post('https://dlua-chat-api.onrender.com/api/posts/create', {
+                author: user.id,
+                imageUrl,
+                caption: locketCaption
+            });
+            toast.success("Đã đăng khoảnh khắc thành công! ✨", { id: loadingToast });
+            setLocketCaption('');
+            stopLocketCamera();
+            fetchFeed();
+        } catch (err) {
+            toast.error("Lỗi đăng ảnh rồi bạn ơi!", { id: loadingToast });
+        }
+    };
+
+    // 6. Thả cảm xúc  bài viết
+    const handleReactPost = async (postId, emoji) => {
+        try {
+            const res = await axios.put(`https://dlua-chat-api.onrender.com/api/posts/react/${postId}`, { userId: user.id, emoji });
+            setPosts(prev => prev.map(p => p._id === postId ? { ...p, reactions: res.data } : p));
+            // Phát socket thông báo (bước sau chúng ta sẽ làm kỹ phần socket này)
+        } catch (err) { console.error(err); }
+    };
+
+    // 7. Bình luận bài viết
+    const handleCommentPost = async (e, postId) => {
+        e.preventDefault();
+        const text = commentInputs[postId];
+        if (!text || !text.trim()) return;
+
+        try {
+            const res = await axios.post(`https://dlua-chat-api.onrender.com/api/posts/comment/${postId}`, { userId: user.id, text });
+            setPosts(prev => prev.map(p => p._id === postId ? { ...p, comments: res.data } : p));
+            setCommentInputs(prev => ({ ...prev, [postId]: '' })); // Xóa trắng ô nhập sau khi gửi
+        } catch (err) { console.error(err); }
     };
 
     const handleScroll = (e) => { 
@@ -1146,6 +1262,9 @@ export default function Home() {
                         <i className="ri-user-smile-fill text-2xl"></i>
                         {pendingRequests.length > 0 && <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0a192f] animate-pulse"></span>}
                     </button>
+                    <button onClick={() => setActiveTab('locket')} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'locket' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Khoảnh khắc Locket">
+                        <i className="ri-instagram-line text-2xl"></i>
+                    </button>
                     <button onClick={() => setActiveTab('groups')} className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${activeTab === 'groups' ? 'bg-white/20 text-white shadow-inner' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Nhóm"><i className="ri-group-fill text-2xl"></i></button>
                     <div className="w-8 h-[1px] bg-slate-700 my-2"></div>
                     <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-12 h-12 rounded-2xl flex items-center justify-center text-slate-400 hover:text-yellow-400 hover:bg-white/10 transition-all" title="Giao diện">
@@ -1248,6 +1367,110 @@ export default function Home() {
                                 ))}
                             </div>
                         </>
+                    )}
+                    {activeTab === 'locket' && (
+                        <div className="w-full h-full flex flex-col pb-4 animate-fade-in">
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Khoảnh khắc</h2>
+                                <button onClick={startLocketCamera} className="bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700 text-white font-bold text-xs px-4 py-2.5 rounded-2xl flex items-center gap-2 shadow-md shadow-amber-500/20 active:scale-95 transition-all">
+                                    📸 Chụp ảnh
+                                </button>
+                            </div>
+
+                            {/* BANNER CAMERA CHỤP ẢNH LOCKET (BUNG RA KHI BẤM NÚT CHỤP) */}
+                            {isCameraOpen && (
+                                <div className="bg-slate-900 text-white p-5 rounded-[28px] mb-6 border border-slate-800 flex flex-col items-center relative shadow-xl">
+                                    <button onClick={stopLocketCamera} className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold">✕</button>
+                                    <p className="text-[11px] font-bold text-amber-400 uppercase tracking-widest mb-4">Ống kính Locket</p>
+                                    
+                                    {/* Khung Live Video / Khung Xem ảnh hình tròn chuẩn locket */}
+                                    <div className="w-56 h-56 rounded-full overflow-hidden bg-black border-4 border-amber-500 shadow-inner relative flex items-center justify-center">
+                                        {!capturedImage ? (
+                                            <video ref={locketVideoRef} autoPlay playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
+                                        ) : (
+                                            <img src={capturedImage} className="w-full h-full object-cover" />
+                                        )}
+                                    </div>
+
+                                    {/* Bộ điều khiển chụp / đăng bài */}
+                                    {!capturedImage ? (
+                                        <button onClick={captureLocketPhoto} className="w-14 h-14 bg-white hover:bg-slate-200 border-4 border-slate-700 rounded-full mt-5 shadow-lg active:scale-90 transition-all flex items-center justify-center text-2xl">📸</button>
+                                    ) : (
+                                        <div className="w-full mt-4 space-y-3">
+                                            <input type="text" placeholder="Viết dòng trạng thái (caption)..." value={locketCaption} onChange={(e) => setLocketCaption(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2.5 px-4 text-xs outline-none text-white focus:ring-2 focus:ring-amber-500 transition-all" />
+                                            <div className="flex gap-2">
+                                                <button onClick={handlePublishPost} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 rounded-xl text-xs shadow-md transition-colors">🚀 Đăng lên</button>
+                                                <button onClick={startLocketCamera} className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold py-2 rounded-xl text-xs transition-colors">📸 Chụp lại</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            <div className="flex-1 overflow-y-auto space-y-6 pr-1 scrollbar-hide max-h-[calc(100dvh-180px)]">
+                                {posts.length === 0 ? (
+                                    <div className="text-center text-slate-400 text-xs py-12">Chưa có ai đăng khoảnh khắc nào từ lúc kết bạn!</div>
+                                ) : posts.map(post => (
+                                    <div key={post._id} className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/60 rounded-[24px] shadow-sm overflow-hidden flex flex-col">
+                                        
+                                        {/* Header bài đăng (Avatar + Tên) */}
+                                        <div className="flex items-center gap-3 p-4">
+                                            <div className="w-9 h-9 bg-slate-200 rounded-xl overflow-hidden font-bold flex items-center justify-center text-sm text-slate-500">
+                                                {post.author?.avatar ? <img src={post.author.avatar} className="w-full h-full object-cover"/> : post.author?.fullName[0]}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-xs text-slate-800 dark:text-white">{post.author?.fullName}</p>
+                                                <p className="text-[9px] text-blue-500">@{post.author?.uniqueName}</p>
+                                            </div>
+                                            <span className="text-[9px] text-slate-400 ml-auto font-medium">{new Date(post.createdAt).toLocaleDateString('vi-VN')}</span>
+                                        </div>
+
+                                        {/* Ảnh vuông bài đăng */}
+                                        <div className="w-full aspect-square bg-slate-900 overflow-hidden relative group">
+                                            <img src={post.imageUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" alt="locket-post"/>
+                                        </div>
+
+                                        {/* Thanh tương tác nhanh */}
+                                        <div className="p-4 flex flex-col gap-2">
+                                            <div className="flex items-center gap-3">
+                                                <button onClick={() => handleReactPost(post._id, '❤️')} className="text-xl active:scale-120 transition-transform">
+                                                    {post.reactions?.some(r => r.userId === user.id) ? '❤️' : '🤍'}
+                                                </button>
+                                                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
+                                                    {post.reactions?.length || 0} lượt thích
+                                                </span>
+                                            </div>
+
+                                            {/* Caption (Dòng trạng thái) */}
+                                            {post.caption && (
+                                                <p className="text-xs text-slate-700 dark:text-slate-300 break-words font-medium">
+                                                    <span className="font-black text-slate-900 dark:text-white mr-2">{post.author?.fullName}</span>
+                                                    {post.caption}
+                                                </p>
+                                            )}
+
+                                            {/* Danh sách bình luận (Instagram Style) */}
+                                            {post.comments && post.comments.length > 0 && (
+                                                <div className="mt-2 space-y-1.5 max-h-32 overflow-y-auto border-t border-slate-50 dark:border-slate-700/40 pt-2 scrollbar-hide">
+                                                    {post.comments.map((comment, index) => (
+                                                        <div key={index} className="text-[11px] text-slate-600 dark:text-slate-300 break-words">
+                                                            <span className="font-bold text-slate-800 dark:text-white mr-1.5">{comment.userId?.fullName}:</span>
+                                                            {comment.text}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* Ô gõ nhập bình luận */}
+                                            <form onSubmit={(e) => handleCommentPost(e, post._id)} className="flex items-center gap-2 mt-2 border-t border-slate-50 dark:border-slate-700/40 pt-2">
+                                                <input type="text" placeholder="Thêm bình luận..." value={commentInputs[post._id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post._id]: e.target.value })} className="flex-1 bg-transparent text-xs outline-none text-slate-700 dark:text-slate-200 placeholder-slate-400" />
+                                                <button type="submit" className="text-blue-500 font-bold text-xs active:scale-95 transition-transform">Gửi</button>
+                                            </form>
+                                        </div>
+
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     )}
                     {activeTab === 'profile' && (
                         <div className="flex flex-col h-full">
@@ -1563,6 +1786,10 @@ export default function Home() {
                             {pendingRequests.length > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white dark:border-slate-950"></span>}
                         </div>
                         <span className="text-[10px] font-bold">Bạn bè</span>
+                    </button>
+                    <button onClick={() => setActiveTab('locket')} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'locket' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                        <i className={`${activeTab === 'locket' ? 'ri-instagram-fill' : 'ri-instagram-line'} text-2xl`}></i>
+                        <span className="text-[10px] font-bold">Locket</span>
                     </button>
                     <button onClick={() => setActiveTab('groups')} className={`flex flex-col items-center gap-1 w-16 ${activeTab === 'groups' ? 'text-blue-600 dark:text-blue-500' : 'text-slate-400 dark:text-slate-500'}`}>
                         <i className={`${activeTab === 'groups' ? 'ri-group-fill' : 'ri-group-line'} text-2xl`}></i>

@@ -1,6 +1,5 @@
 const User = require('../models/User');
 const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
 const FriendRequest = require('../models/FriendRequest');
 
 // 1. Đăng ký
@@ -20,7 +19,7 @@ exports.register = async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Lỗi server', error: error.message }); }
 };
 
-// 2. Đăng nhập (Đã nâng cấp Access/Refresh Token)
+// 2. Đăng nhập (Đã gỡ bỏ JWT Token, trả thẳng User)
 exports.login = async (req, res) => {
     try {
         const { username, password } = req.body;
@@ -30,17 +29,16 @@ exports.login = async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: 'Sai mật khẩu!' });
         
-        // Tạo Access Token (Sống 15 phút - Dùng để chat)
-        const accessToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '15m' });
-        
-        // Tạo Refresh Token (Sống 30 ngày - Chỉ dùng để xin Access Token mới)
-        const refreshToken = jwt.sign({ id: user._id }, process.env.JWT_REFRESH_SECRET, { expiresIn: '30d' });
-        
+        // Trả về trực tiếp thông tin User, loại bỏ hoàn toàn AccessToken/RefreshToken
         res.status(200).json({ 
             message: 'Đăng nhập thành công', 
-            accessToken, 
-            refreshToken, 
-            user: { id: user._id, fullName: user.fullName, username: user.username, uniqueName: user.uniqueName, avatar: user.avatar } 
+            user: { 
+                id: user._id, 
+                fullName: user.fullName, 
+                username: user.username, 
+                uniqueName: user.uniqueName, 
+                avatar: user.avatar 
+            } 
         });
     } catch (error) { res.status(500).json({ message: 'Lỗi server', error: error.message }); }
 };
@@ -56,14 +54,21 @@ exports.searchUser = async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Lỗi server khi tìm kiếm' }); }
 };
 
-// 4. Gửi lời mời kết bạn
+// 4. Gửi lời mời kết bạn (Bảo vệ kiểm tra mảng Object)
 exports.sendFriendRequest = async (req, res) => {
     try {
         const { senderId, receiverId } = req.body;
         if (senderId === receiverId) return res.status(400).json({ message: 'Không thể tự kết bạn!' }); 
+        
         const sender = await User.findById(senderId);
-        const isAlreadyFriend = sender.friends.some(f => f.userId.toString() === receiverId);
+        // Ngăn chặn kết bạn 2 lần
+        const isAlreadyFriend = sender.friends.some(f => f.userId && f.userId.toString() === receiverId);
         if (isAlreadyFriend) return res.status(400).json({ message: 'Đã là bạn bè rồi!' });     
+        
+        // Kiểm tra xem đã gửi lời mời trước đó chưa
+        const existingRequest = await FriendRequest.findOne({ sender: senderId, receiver: receiverId, status: 'pending' });
+        if(existingRequest) return res.status(400).json({ message: 'Đã gửi lời mời trước đó rồi!' });
+
         const newRequest = new FriendRequest({ sender: senderId, receiver: receiverId });
         await newRequest.save();
         res.status(201).json({ message: 'Đã gửi lời mời!' });
@@ -78,12 +83,13 @@ exports.getPendingRequests = async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Lỗi server' }); }
 };
 
-// 6. Phản hồi lời mời
+// 6. Phản hồi lời mời (Lưu kèm thời điểm kết bạn cho Locket)
 exports.respondRequest = async (req, res) => {
     try {
         const { requestId, status } = req.body;
         const request = await FriendRequest.findById(requestId);
         if (!request) return res.status(404).json({ message: 'Yêu cầu không tồn tại!' });
+        
         if (status === 'accepted') {
             const now = new Date();
             await User.findByIdAndUpdate(request.sender, { 
@@ -101,15 +107,19 @@ exports.respondRequest = async (req, res) => {
     } catch (error) { res.status(500).json({ message: 'Lỗi server' }); }
 };
 
-// 7. Lấy danh sách bạn bè
+// 7. Lấy danh sách bạn bè (Bảo vệ dữ liệu trống)
 exports.getFriends = async (req, res) => {
     try {
         const user = await User.findById(req.params.userId)
             .populate('friends.userId', 'fullName uniqueName avatar isOnline lastSeen');       
+        
         if (!user) return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+        
+        // Loại bỏ các Object rác (nếu có user nào bị xóa tài khoản)
         const formattedFriends = user.friends
-            .map(f => f.userId)
-            .filter(f => f !== null);
+            .filter(f => f.userId != null) 
+            .map(f => f.userId);
+            
         res.status(200).json(formattedFriends);
     } catch (error) { 
         console.error(error);
@@ -117,7 +127,7 @@ exports.getFriends = async (req, res) => {
     }
 };
 
-// 8. Xóa bạn bè
+// 8. Xóa bạn bè (Xóa triệt để object khỏi mảng)
 exports.unfriend = async (req, res) => {
     try {
         const { userId, friendId } = req.body;
@@ -151,27 +161,4 @@ exports.updateAvatar = async (req, res) => {
         const user = await User.findByIdAndUpdate(userId, { avatar: avatarUrl }, { new: true });
         res.status(200).json({ avatar: user.avatar });
     } catch (error) { res.status(500).json({ message: 'Lỗi cập nhật ảnh' }); }
-};
-
-// 11. [API MỚI] Cấp lại Access Token mới
-exports.refreshToken = async (req, res) => {
-    const { token } = req.body;
-    if (!token) return res.status(401).json({ message: "Không tìm thấy token" });
-
-    try {
-        // Kiểm tra xem Refresh Token có hợp lệ và còn hạn không
-        const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
-        
-        // Nếu hợp lệ, cấp cho nó cái chìa Access Token mới (15 phút)
-        const newAccessToken = jwt.sign(
-            { id: decoded.id }, 
-            process.env.JWT_SECRET, 
-            { expiresIn: '15m' }
-        );
-
-        res.status(200).json({ accessToken: newAccessToken });
-    } catch (error) {
-        // Nếu Refresh Token cũng hết hạn (qua 30 ngày)
-        res.status(403).json({ message: "Phiên đăng nhập hết hạn, vui lòng đăng nhập lại" });
-    }
 };

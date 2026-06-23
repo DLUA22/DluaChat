@@ -127,6 +127,8 @@ export default function Home() {
     const mobileVideoRef = useRef(null);
     const mediaRecorderRef = useRef(null);
     const videoChunksRef = useRef([]);
+    const [recordingProgress, setRecordingProgress] = useState(0); 
+    const progressIntervalRef = useRef(null);
 
     // 4. STATES: WebRTC & Call
     const [callStatus, setCallStatus] = useState('idle'); 
@@ -553,107 +555,80 @@ export default function Home() {
     };
     useEffect(() => { if (activeTab === 'locket') fetchFeed(); }, [activeTab]);
 
-    // 2. Mở Camera (Có chức năng Lật)
     const startLocketCamera = async (forceBack = false) => {
-        setCapturedImage(null);
-        setCapturedVideo(null);
-        setIsCameraOpen(true);
+        setCapturedImage(null); setCapturedVideo(null); setIsCameraOpen(true);
         try {
             const mode = forceBack ? { exact: "environment" } : "user";
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { width: 480, height: 480, facingMode: mode }, 
-                audio: true // Thêm âm thanh để quay video
-            });
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480, facingMode: mode }, audio: true });
             setLocketStream(stream);
-
             requestAnimationFrame(() => {
                 const video = window.innerWidth >= 768 ? desktopVideoRef.current : mobileVideoRef.current;
-                if (video) {
-                    video.srcObject = stream;
-                    video.play().catch(e => console.log("Auto-play bị chặn"));
-                }
+                if (video) { video.srcObject = stream; video.play().catch(e => console.log("Auto-play bị chặn")); }
             });
-        } catch (err) {
-            console.error("Lỗi xin quyền Camera:", err);
-            toast.error("Không thể truy cập Camera. Kiểm tra cấp quyền!");
-        }
+        } catch (err) { toast.error("Không thể truy cập Camera. Kiểm tra cấp quyền!"); }
     };
 
-    // 3. Tắt Camera an toàn
     const stopLocketCamera = () => {
-        if (locketStream) {
-            locketStream.getTracks().forEach(track => track.stop());
-            setLocketStream(null);
-        }
-        setIsCameraOpen(false);
-        setCapturedImage(null);
-        setCapturedVideo(null);
+        if (locketStream) { locketStream.getTracks().forEach(track => track.stop()); setLocketStream(null); }
+        setIsCameraOpen(false); setCapturedImage(null); setCapturedVideo(null);
+        clearInterval(progressIntervalRef.current); setRecordingProgress(0);
     };
 
-    // Theo dõi: Chuyển trang là TẮT NGAY CAMERA (Sửa lỗi mở tab khác cam vẫn chạy)
-    useEffect(() => {
-        if (activeTab !== 'locket' && isCameraOpen) stopLocketCamera();
-    }, [activeTab]);
+    useEffect(() => { if (activeTab !== 'locket' && isCameraOpen) stopLocketCamera(); }, [activeTab]);
 
     const toggleDcamLens = () => {
-        stopLocketCamera();
-        setIsFrontCamera(!isFrontCamera);
+        stopLocketCamera(); setIsDcamFront(!isFrontCamera);
         setTimeout(() => startLocketCamera(!isFrontCamera), 500);
     };
 
-    // 4.1 Bấm nút Chụp ảnh
     const captureLocketPhoto = () => {
         const isDesktop = window.innerWidth >= 768;
         const video = isDesktop ? desktopVideoRef.current : mobileVideoRef.current;
         if (!video || !video.srcObject) return;
-        
         const canvas = document.createElement('canvas');
-        canvas.width = 480;
-        canvas.height = 480;
+        canvas.width = 480; canvas.height = 480;
         const ctx = canvas.getContext('2d');
         if (isFrontCamera) { ctx.translate(480, 0); ctx.scale(-1, 1); }
         ctx.drawImage(video, 0, 0, 480, 480);
-        
         setCapturedImage(canvas.toDataURL('image/jpeg'));
         if (locketStream) locketStream.getTracks().forEach(track => track.stop());
     };
 
-    // 4.2 Giữ nút để Quay Video 5s
     const startRecording = () => {
         if (!locketStream) return;
         videoChunksRef.current = [];
         const mediaRecorder = new MediaRecorder(locketStream);
         mediaRecorderRef.current = mediaRecorder;
 
-        mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) videoChunksRef.current.push(event.data);
-        };
-
+        mediaRecorder.ondataavailable = (event) => { if (event.data.size > 0) videoChunksRef.current.push(event.data); };
         mediaRecorder.onstop = () => {
             const blob = new Blob(videoChunksRef.current, { type: 'video/mp4' });
             setCapturedVideo(window.URL.createObjectURL(blob));
             if (locketStream) locketStream.getTracks().forEach(track => track.stop());
             setIsRecording(false);
+            clearInterval(progressIntervalRef.current); setRecordingProgress(0);
         };
 
-        mediaRecorder.start();
-        setIsRecording(true);
+        mediaRecorder.start(); setIsRecording(true);
 
-        // Tự động ngắt sau 5 giây
+        // HIỆU ỨNG VÒNG TRÒN CHẠY 5 GIÂY (5000ms)
+        setRecordingProgress(0);
+        progressIntervalRef.current = setInterval(() => {
+            setRecordingProgress(prev => {
+                if (prev >= 100) { clearInterval(progressIntervalRef.current); return 100; }
+                return prev + 1; // Mỗi 50ms tăng 1% -> 100% mất 5 giây
+            });
+        }, 50);
+
         setTimeout(() => {
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-                mediaRecorderRef.current.stop();
-            }
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") mediaRecorderRef.current.stop();
         }, 5000);
     };
 
     const stopRecording = () => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-            mediaRecorderRef.current.stop();
-        }
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") mediaRecorderRef.current.stop();
     };
 
-    // 5. Đăng bài lên Dfeed (Hỗ trợ cả ảnh và Video)
     const handlePublishPost = async () => {
         if (!capturedImage && !capturedVideo) return;
         const loadingToast = toast.loading("Đang bắn lên Dfeed...");
@@ -665,27 +640,36 @@ export default function Home() {
             formData.append('file', blob, capturedVideo ? 'locket.mp4' : 'locket.jpg');
             
             const uploadRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/upload', formData);
-            
-            await axios.post('https://dlua-chat-api.onrender.com/api/posts/create', {
-                author: user.id,
-                imageUrl: uploadRes.data.url, // Đổi sang nhận video
-                caption: locketCaption
-            });
-
+            await axios.post('https://dlua-chat-api.onrender.com/api/posts/create', { author: user.id, imageUrl: uploadRes.data.url, caption: locketCaption });
             toast.success("Khoảnh khắc đã lên sóng! ✨", { id: loadingToast });
-            setLocketCaption('');
-            stopLocketCamera();
-            fetchFeed();
+            setLocketCaption(''); stopLocketCamera(); fetchFeed();
         } catch (err) { toast.error("Đăng thất bại!", { id: loadingToast }); }
     };
 
-    const handleDeletePost = async (postId) => {
-        if (!window.confirm("Bạn muốn xóa bài đăng này?")) return;
-        try {
-            await axios.delete(`https://dlua-chat-api.onrender.com/api/posts/delete/${postId}`, { data: { userId: user.id } });
-            setPosts(prev => prev.filter(p => p._id !== postId));
-            toast.success("Đã xóa bài đăng!");
-        } catch (err) { toast.error("Lỗi khi xóa bài"); }
+    // ĐÃ SỬA: MODAL XÓA BÀI ĐĂNG SIÊU ĐẸP
+    const handleDeletePost = (postId) => {
+        toast((t) => (
+            <div className="flex flex-col gap-3 min-w-[250px] p-2">
+                <div className="flex flex-col items-center gap-2">
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-2xl">
+                        <i className="ri-delete-bin-line"></i>
+                    </div>
+                    <p className="text-[15px] font-bold text-slate-800 text-center">Xóa bài đăng này?</p>
+                    <p className="text-xs text-slate-500 text-center px-2">Khoảnh khắc này sẽ biến mất vĩnh viễn khỏi Dfeed.</p>
+                </div>
+                <div className="flex gap-2 mt-4">
+                    <button onClick={async () => {
+                        toast.dismiss(t.id);
+                        try {
+                            await axios.delete(`https://dlua-chat-api.onrender.com/api/posts/delete/${postId}`, { data: { userId: user.id } });
+                            setPosts(prev => prev.filter(p => p._id !== postId));
+                            toast.success("Đã xóa bài đăng!");
+                        } catch (err) { toast.error("Lỗi khi xóa bài"); }
+                    }} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-xl text-sm font-bold shadow-md transition-colors">Xóa luôn</button>
+                    <button onClick={() => toast.dismiss(t.id)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-2 rounded-xl text-sm font-bold transition-colors">Hủy</button>
+                </div>
+            </div>
+        ), { id: `delete-post-${postId}`, duration: Infinity, position: 'top-center' });
     };
 
     const handleReactPost = async (postId, emoji) => {
@@ -706,10 +690,7 @@ export default function Home() {
         } catch (err) { console.error(err); }
     };
 
-    const handleScroll = (e) => { 
-        if (e.target.scrollTop === 0 && hasMore && !isLoadingMore) setPage(prev => prev + 1); 
-    };
-
+    const handleScroll = (e) => { if (e.target.scrollTop === 0 && hasMore && !isLoadingMore) setPage(prev => prev + 1); };
     const handleInstallClick = async () => {
         if (!deferredPrompt) return;
         deferredPrompt.prompt(); 
@@ -737,23 +718,12 @@ export default function Home() {
         try { 
             const res = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); 
             const socketData = { ...res.data, senderName: user.fullName };
-            
-            if (isGroup) { 
-                currentChat.members.forEach(m => {
-                    if (m._id !== user.id) {
-                        socket.emit('send_message', { ...socketData, receiverId: m._id, groupId: currentChat._id }); 
-                    }
-                });
-            } else { 
-                socket.emit('send_message', socketData); 
-            }
+            if (isGroup) { currentChat.members.forEach(m => { if (m._id !== user.id) { socket.emit('send_message', { ...socketData, receiverId: m._id, groupId: currentChat._id }); } }); } 
+            else { socket.emit('send_message', socketData); }
 
             let msgToDisplay = { ...res.data, senderName: user.fullName, text: newMessage }; 
-            if (msgToDisplay.replyTo && typeof msgToDisplay.replyTo.text === 'string' && msgToDisplay.replyTo.text.startsWith("U2FsdGVk")) {
-                msgToDisplay.replyTo = { ...msgToDisplay.replyTo, text: decryptText(msgToDisplay.replyTo.text) };
-            }
+            if (msgToDisplay.replyTo && typeof msgToDisplay.replyTo.text === 'string' && msgToDisplay.replyTo.text.startsWith("U2FsdGVk")) { msgToDisplay.replyTo = { ...msgToDisplay.replyTo, text: decryptText(msgToDisplay.replyTo.text) }; }
             setMessages((prev) => [...prev, msgToDisplay]);
-            
             setNewMessage(''); setReplyingTo(null); setShowEmoji(false); 
             setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); 
         } catch (err) { toast.error("Lỗi gửi tin"); } 
@@ -762,58 +732,29 @@ export default function Home() {
     const handleFileUpload = async (e, type) => { 
         const file = e.target.files[0]; 
         if (!file) return; 
-        setIsUploading(true);
-        setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-        const formData = new FormData(); 
-        formData.append('file', file); 
+        setIsUploading(true); setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+        const formData = new FormData(); formData.append('file', file); 
         try { 
             const uploadRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/upload', formData); 
             const payloadKey = type === 'image' ? 'imageUrl' : type === 'video' ? 'videoUrl' : 'fileUrl'; 
             const isGroup = currentChat.isGroup; 
-            const messageData = { 
-                senderId: user.id, 
-                receiverId: isGroup ? null : currentChat._id, 
-                groupId: isGroup ? currentChat._id : null, 
-                text: '', 
-                [payloadKey]: uploadRes.data.url, 
-                fileName: type !== 'image' ? file.name : null,
-                replyTo: replyingTo ? replyingTo._id : null, 
-                type: 'text' 
-            }; 
+            const messageData = { senderId: user.id, receiverId: isGroup ? null : currentChat._id, groupId: isGroup ? currentChat._id : null, text: '', [payloadKey]: uploadRes.data.url, fileName: type !== 'image' ? file.name : null, replyTo: replyingTo ? replyingTo._id : null, type: 'text' }; 
             const msgRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); 
             let msgToSend = { ...msgRes.data, senderName: user.fullName }; 
-            if (msgToSend.replyTo && typeof msgToSend.replyTo.text === 'string' && msgToSend.replyTo.text.startsWith("U2FsdGVk")) {
-                msgToSend.replyTo = { ...msgToSend.replyTo, text: decryptText(msgToSend.replyTo.text) };
-            }
+            if (msgToSend.replyTo && typeof msgToSend.replyTo.text === 'string' && msgToSend.replyTo.text.startsWith("U2FsdGVk")) { msgToSend.replyTo = { ...msgToSend.replyTo, text: decryptText(msgToSend.replyTo.text) }; }
             setMessages((prev) => [...prev, msgToSend]); 
-            if (isGroup) { 
-                currentChat.members.forEach(m => { 
-                    if(m._id !== user.id) socket.emit('send_message', { ...msgToSend, receiverId: m._id, groupId: currentChat._id }); 
-                }); 
-            } else { 
-                socket.emit('send_message', msgToSend); 
-            } 
-            setReplyingTo(null); 
-            setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); 
-        } catch (err) { 
-            toast.error(`Lỗi gửi file`); 
-        } finally {
-            setIsUploading(false);
-            e.target.value = null; 
-        }
+            if (isGroup) { currentChat.members.forEach(m => { if(m._id !== user.id) socket.emit('send_message', { ...msgToSend, receiverId: m._id, groupId: currentChat._id }); }); } 
+            else { socket.emit('send_message', msgToSend); } 
+            setReplyingTo(null); setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); 
+        } catch (err) { toast.error(`Lỗi gửi file`); } finally { setIsUploading(false); e.target.value = null; }
     };
 
     const handleUnsend = async (messageId) => { 
         try { 
             await axios.put(`https://dlua-chat-api.onrender.com/api/messages/unsend/${messageId}`); 
             setMessages((prev) => prev.map(m => m._id === messageId ? { ...m, isUnsent: true } : m)); 
-            if (currentChat.isGroup) { 
-                currentChat.members.forEach(m => { 
-                    if(m._id !== user.id) socket.emit('unsend_message', { messageId, receiverId: m._id, groupId: currentChat._id }); 
-                }); 
-            } else {
-                socket.emit('unsend_message', { messageId, receiverId: currentChat._id }); 
-            }
+            if (currentChat.isGroup) { currentChat.members.forEach(m => { if(m._id !== user.id) socket.emit('unsend_message', { messageId, receiverId: m._id, groupId: currentChat._id }); }); } 
+            else { socket.emit('unsend_message', { messageId, receiverId: currentChat._id }); }
             setActiveMenuId(null); 
         } catch (err) { toast.error("Lỗi thu hồi"); } 
     };
@@ -822,13 +763,8 @@ export default function Home() {
         try { 
             const res = await axios.put(`https://dlua-chat-api.onrender.com/api/messages/react/${messageId}`, { userId: user.id, emoji }); 
             setMessages((prev) => prev.map(m => m._id === messageId ? { ...m, reactions: res.data } : m)); 
-            if (currentChat.isGroup) { 
-                currentChat.members.forEach(m => { 
-                    if(m._id !== user.id) socket.emit('react_message', { messageId, reactions: res.data, receiverId: m._id, groupId: currentChat._id }); 
-                }); 
-            } else {
-                socket.emit('react_message', { messageId, reactions: res.data, receiverId: currentChat._id }); 
-            }
+            if (currentChat.isGroup) { currentChat.members.forEach(m => { if(m._id !== user.id) socket.emit('react_message', { messageId, reactions: res.data, receiverId: m._id, groupId: currentChat._id }); }); } 
+            else { socket.emit('react_message', { messageId, reactions: res.data, receiverId: currentChat._id }); }
             setActiveMenuId(null); 
         } catch (err) { console.error("Lỗi react", err); } 
     };
@@ -837,54 +773,28 @@ export default function Home() {
         toast((t) => (
             <div className="flex flex-col gap-3 min-w-[250px] p-2">
                 <div className="flex flex-col items-center gap-2">
-                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-2xl">
-                        <i className="ri-logout-box-r-line"></i>
-                    </div>
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-2xl"><i className="ri-logout-box-r-line"></i></div>
                     <p className="text-[15px] font-bold text-slate-800 text-center">Bạn muốn đăng xuất?</p>
                     <p className="text-xs text-slate-500 text-center">Bạn sẽ không nhận được tin nhắn mới nữa.</p>
                 </div>
-                
                 <div className="flex gap-2 mt-4">
-                    <button 
-                        onClick={() => {
-                            toast.dismiss(t.id);
-                            localStorage.clear();
-                            sessionStorage.clear();
-                            navigate('/login', { replace: true });
-                        }} 
-                        className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-xl text-sm font-bold transition-colors shadow-md"
-                    >
-                        Đăng xuất
-                    </button>
-                    <button 
-                        onClick={() => toast.dismiss(t.id)}
-                        className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-2 rounded-xl text-sm font-bold transition-colors"
-                    >
-                        Hủy
-                    </button>
+                    <button onClick={() => { toast.dismiss(t.id); localStorage.clear(); sessionStorage.clear(); navigate('/login', { replace: true }); }} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-xl text-sm font-bold transition-colors shadow-md">Đăng xuất</button>
+                    <button onClick={() => toast.dismiss(t.id)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-2 rounded-xl text-sm font-bold transition-colors">Hủy</button>
                 </div>
             </div>
-        ), { 
-            id: 'logout-modal',
-            duration: Infinity,
-            position: 'top-center' 
-        });
+        ), { id: 'logout-modal', duration: Infinity, position: 'top-center' });
     };
 
     const handleGlobalSearch = async (e) => { 
-        e.preventDefault(); setSearchResult(null); 
-        if (!globalSearchQuery.trim()) return; 
+        e.preventDefault(); setSearchResult(null); if (!globalSearchQuery.trim()) return; 
         try { 
-            const res = await axios.get(`https://dlua-chat-api.onrender.com/api/auth/search?uniqueName=${globalSearchQuery}`); 
-            setSearchResult(res.data); 
+            const res = await axios.get(`https://dlua-chat-api.onrender.com/api/auth/search?uniqueName=${globalSearchQuery}`); setSearchResult(res.data); 
         } catch (err) { toast.error('Không tìm thấy người dùng'); } 
     };
 
     const handleSendRequest = async (receiverId) => { 
         try { 
-            await axios.post('https://dlua-chat-api.onrender.com/api/auth/friend-request/send', { senderId: user.id, receiverId }); 
-            toast.success('Đã gửi lời mời!'); setSearchResult(null); setGlobalSearchQuery(''); 
-            socket.emit('send_friend_request', { receiverId }); 
+            await axios.post('https://dlua-chat-api.onrender.com/api/auth/friend-request/send', { senderId: user.id, receiverId }); toast.success('Đã gửi lời mời!'); setSearchResult(null); setGlobalSearchQuery(''); socket.emit('send_friend_request', { receiverId }); 
         } catch (err) { toast.error('Lỗi gửi lời mời'); } 
     };
 
@@ -893,7 +803,7 @@ export default function Home() {
             await axios.post('https://dlua-chat-api.onrender.com/api/auth/friend-request/respond', { requestId: req._id, status }); 
             if (status === 'accepted') { socket.emit('accept_friend_request', { receiverId: req.sender._id }); } 
             fetchInitialData(user.id); 
-        } catch (err) { console.error("Lỗi duyệt lời mời", err); } 
+        } catch (err) { console.error("Lỗi duyệt", err); } 
     };
 
     const handleUnfriend = (friendId) => { 
@@ -901,15 +811,7 @@ export default function Home() {
             <div className="flex flex-col gap-3 min-w-[200px]">
                 <p className="text-[13px] font-bold text-slate-800 text-center">Chắc chắn muốn xóa người này?</p>
                 <div className="flex gap-2 mt-1">
-                    <button onClick={async () => { 
-                        toast.dismiss(t.id); 
-                        try { 
-                            await axios.post('https://dlua-chat-api.onrender.com/api/auth/unfriend', { userId: user.id, friendId }); 
-                            toast.success("Đã xóa bạn bè", { duration: 2000 }); 
-                            if (currentChat && currentChat._id === friendId) setCurrentChat(null); 
-                            fetchFriends(user.id); 
-                        } catch (err) { toast.error("Lỗi khi xóa bạn bè"); } 
-                    }} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-1.5 rounded-lg text-xs font-bold transition-colors">Xóa luôn</button>
+                    <button onClick={async () => { toast.dismiss(t.id); try { await axios.post('https://dlua-chat-api.onrender.com/api/auth/unfriend', { userId: user.id, friendId }); toast.success("Đã xóa bạn bè", { duration: 2000 }); if (currentChat && currentChat._id === friendId) setCurrentChat(null); fetchFriends(user.id); } catch (err) { toast.error("Lỗi khi xóa"); } }} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-1.5 rounded-lg text-xs font-bold transition-colors">Xóa luôn</button>
                     <button onClick={() => toast.dismiss(t.id)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-1.5 rounded-lg text-xs font-bold transition-colors">Hủy bỏ</button>
                 </div>
             </div> 
@@ -920,23 +822,14 @@ export default function Home() {
         if (editorRef.current) { 
             const canvas = editorRef.current.getImageScaledToCanvas(); 
             canvas.toBlob(async (blob) => { 
-                const formData = new FormData(); 
-                formData.append('file', blob, 'avatar.png'); 
+                const formData = new FormData(); formData.append('file', blob, 'avatar.png'); 
                 try { 
                     const uploadRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/upload', formData); 
                     const avatarUrl = uploadRes.data.url; 
                     const res = await axios.post('https://dlua-chat-api.onrender.com/api/auth/update-avatar', { userId: user.id, avatarUrl }); 
-                    const updatedUser = { ...user, avatar: res.data.avatar }; 
-                    setUser(updatedUser); 
-                    
-                    if (localStorage.getItem('user')) {
-                        localStorage.setItem('user', JSON.stringify(updatedUser)); 
-                    } else {
-                        sessionStorage.setItem('user', JSON.stringify(updatedUser));
-                    }
-
-                    setAvatarFile(null); 
-                    toast.success("Đã cập nhật Avatar!"); 
+                    const updatedUser = { ...user, avatar: res.data.avatar }; setUser(updatedUser); 
+                    if (localStorage.getItem('user')) { localStorage.setItem('user', JSON.stringify(updatedUser)); } else { sessionStorage.setItem('user', JSON.stringify(updatedUser)); }
+                    setAvatarFile(null); toast.success("Đã cập nhật Avatar!"); 
                 } catch (err) { toast.error("Lỗi cập nhật Avatar"); } 
             }); 
         } 
@@ -944,10 +837,8 @@ export default function Home() {
 
     const handleChangePassword = async (e) => { 
         e.preventDefault(); 
-        try { 
-            await axios.post('https://dlua-chat-api.onrender.com/api/auth/change-password', { userId: user.id, oldPassword: passwords.oldPass, newPassword: passwords.newPass }); 
-            toast.success("Đổi mật khẩu thành công!"); setPasswords({ oldPass: '', newPass: '' }); 
-        } catch (err) { toast.error(err.response?.data?.message || "Lỗi đổi mật khẩu"); } 
+        try { await axios.post('https://dlua-chat-api.onrender.com/api/auth/change-password', { userId: user.id, oldPassword: passwords.oldPass, newPassword: passwords.newPass }); toast.success("Đổi mật khẩu thành công!"); setPasswords({ oldPass: '', newPass: '' }); } 
+        catch (err) { toast.error(err.response?.data?.message || "Lỗi đổi mật khẩu"); } 
     };
 
     const handleCreateGroup = async (e) => {
@@ -956,10 +847,7 @@ export default function Home() {
         try {
             await axios.post('https://dlua-chat-api.onrender.com/api/groups/create', { name: newGroupName, members: selectedMembers, admin: user.id });
             socket.emit('new_group_created', { members: [...selectedMembers, user.id] });
-            toast.success("Tạo nhóm thành công!");
-            setNewGroupName(''); setSelectedMembers([]);
-            fetchGroups(user.id);
-            setActiveTab('chat');
+            toast.success("Tạo nhóm thành công!"); setNewGroupName(''); setSelectedMembers([]); fetchGroups(user.id); setActiveTab('chat');
         } catch (err) { toast.error("Lỗi tạo nhóm"); }
     };
 
@@ -968,26 +856,7 @@ export default function Home() {
             <div className="flex flex-col gap-3 min-w-[200px]">
                 <p className="text-[13px] font-bold text-slate-800 text-center">Chắc chắn thoát nhóm này?</p>
                 <div className="flex gap-2 mt-1">
-                    <button onClick={async () => {
-                        toast.dismiss(t.id);
-                        try {
-                            const sysMsg = { senderId: user.id, groupId: currentChat._id, text: `${user.fullName} đã rời nhóm`, type: 'system' };
-                            const resMsg = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', sysMsg);
-                            const msgToSend = { ...resMsg.data, senderName: user.fullName };
-
-                            currentChat.members.forEach(m => {
-                                if (m._id !== user.id) {
-                                    socket.emit('send_message', { ...msgToSend, receiverId: m._id, groupId: currentChat._id });
-                                    socket.emit('leave_group', { receiverId: m._id, groupId: currentChat._id, leftUserId: user.id });
-                                }
-                            });
-
-                            await axios.post('https://dlua-chat-api.onrender.com/api/groups/leave', { groupId: currentChat._id, userId: user.id });
-                            toast.success("Đã rời nhóm");
-                            setCurrentChat(null);
-                            fetchGroups(user.id);
-                        } catch (err) { toast.error("Lỗi thoát nhóm"); }
-                    }} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-1.5 rounded-lg text-xs font-bold transition-colors">Thoát</button>
+                    <button onClick={async () => { toast.dismiss(t.id); try { const sysMsg = { senderId: user.id, groupId: currentChat._id, text: `${user.fullName} đã rời nhóm`, type: 'system' }; const resMsg = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', sysMsg); const msgToSend = { ...resMsg.data, senderName: user.fullName }; currentChat.members.forEach(m => { if (m._id !== user.id) { socket.emit('send_message', { ...msgToSend, receiverId: m._id, groupId: currentChat._id }); socket.emit('leave_group', { receiverId: m._id, groupId: currentChat._id, leftUserId: user.id }); } }); await axios.post('https://dlua-chat-api.onrender.com/api/groups/leave', { groupId: currentChat._id, userId: user.id }); toast.success("Đã rời nhóm"); setCurrentChat(null); fetchGroups(user.id); } catch (err) { toast.error("Lỗi thoát"); } }} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-1.5 rounded-lg text-xs font-bold transition-colors">Thoát</button>
                     <button onClick={() => toast.dismiss(t.id)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-1.5 rounded-lg text-xs font-bold transition-colors">Hủy</button>
                 </div>
             </div>
@@ -998,217 +867,84 @@ export default function Home() {
     // WEBRTC CALL HANDLERS
     // ==========================================
     const getMedia = async (type) => { 
-        try { 
-            const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true }); 
-            setLocalStream(stream); 
-            streamRef.current = stream;
-            return stream; 
-        } catch (err) { 
-            toast.error("Cấp quyền Camera/Micro!"); 
-            return null; 
-        } 
+        try { const stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true }); setLocalStream(stream); streamRef.current = stream; return stream; } 
+        catch (err) { toast.error("Cấp quyền Camera/Micro!"); return null; } 
     };
 
     const createPeer = (targetId, stream) => { 
-        const peer = new RTCPeerConnection({ 
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: "turn:global.relay.metered.ca:80", username: "ae0da5fe20e220a4ba893339", credential: "WQ/h5RWQk6hOZevf" },
-                { urls: "turn:global.relay.metered.ca:443", username: "ae0da5fe20e220a4ba893339", credential: "WQ/h5RWQk6hOZevf" },
-                { urls: "turn:global.relay.metered.ca:443?transport=tcp", username: "ae0da5fe20e220a4ba893339", credential: "WQ/h5RWQk6hOZevf" }
-            ] 
-        }); 
-        
-        peerRef.current = peer; 
-        stream.getTracks().forEach(track => peer.addTrack(track, stream)); 
-        peer.ontrack = (e) => setRemoteStream(e.streams[0]); 
-        peer.onicecandidate = (e) => { 
-            if (e.candidate) socket.emit('ice_candidate', { to: targetId, candidate: e.candidate }); 
-        }; 
-        return peer; 
+        const peer = new RTCPeerConnection({ iceServers: [ { urls: 'stun:stun.l.google.com:19302' }, { urls: "turn:global.relay.metered.ca:80", username: "ae0da5fe20e220a4ba893339", credential: "WQ/h5RWQk6hOZevf" }, { urls: "turn:global.relay.metered.ca:443", username: "ae0da5fe20e220a4ba893339", credential: "WQ/h5RWQk6hOZevf" }, { urls: "turn:global.relay.metered.ca:443?transport=tcp", username: "ae0da5fe20e220a4ba893339", credential: "WQ/h5RWQk6hOZevf" } ] }); 
+        peerRef.current = peer; stream.getTracks().forEach(track => peer.addTrack(track, stream)); peer.ontrack = (e) => setRemoteStream(e.streams[0]); peer.onicecandidate = (e) => { if (e.candidate) socket.emit('ice_candidate', { to: targetId, candidate: e.candidate }); }; return peer; 
     };
     
     const startCall = async (type) => { 
-        if (!currentChat || currentChat.isGroup) { toast.error("Chức năng gọi Nhóm chưa được hỗ trợ!"); return; } 
-        const stream = await getMedia(type); 
-        if (!stream) return; 
-        
-        setCallStatus('calling'); 
-        setCallData({ name: currentChat.fullName, type, toId: currentChat._id }); 
-        const peer = createPeer(currentChat._id, stream); 
-        const offer = await peer.createOffer(); 
-        await peer.setLocalDescription(offer); 
-        socket.emit('call_user', { userToCall: currentChat._id, from: user.id, name: user.fullName, type, offer }); 
+        if (!currentChat || currentChat.isGroup) { toast.error("Gọi Nhóm chưa được hỗ trợ!"); return; } 
+        const stream = await getMedia(type); if (!stream) return; 
+        setCallStatus('calling'); setCallData({ name: currentChat.fullName, type, toId: currentChat._id }); const peer = createPeer(currentChat._id, stream); const offer = await peer.createOffer(); await peer.setLocalDescription(offer); socket.emit('call_user', { userToCall: currentChat._id, from: user.id, name: user.fullName, type, offer }); 
     };
     
     const answerCall = async () => { 
-        const stream = await getMedia(callData.type); 
-        if (!stream) return; 
-        setCallStatus('active'); 
-        
-        const peer = createPeer(callData.from, stream); 
-        await peer.setRemoteDescription(new RTCSessionDescription(callData.offer)); 
-        
-        for (let c of pendingCandidates.current) {
-            try { await peer.addIceCandidate(new RTCIceCandidate(c)); } catch(e){}
-        }
-        pendingCandidates.current = [];
-
-        const answer = await peer.createAnswer(); 
-        await peer.setLocalDescription(answer); 
-        socket.emit('answer_call', { to: callData.from, answer }); 
+        const stream = await getMedia(callData.type); if (!stream) return; 
+        setCallStatus('active'); const peer = createPeer(callData.from, stream); await peer.setRemoteDescription(new RTCSessionDescription(callData.offer)); for (let c of pendingCandidates.current) { try { await peer.addIceCandidate(new RTCIceCandidate(c)); } catch(e){} } pendingCandidates.current = []; const answer = await peer.createAnswer(); await peer.setLocalDescription(answer); socket.emit('answer_call', { to: callData.from, answer }); 
     };
 
     const endCall = () => { 
-        const targetId = callStatus === 'ringing' ? callData.from : (currentChat?._id || callData?.toId); 
-        socket.emit('end_call', { to: targetId }); 
-        let isMissed = false, duration = 0; 
-        
-        if (callStatus === 'calling' || callStatus === 'ringing') isMissed = true; 
-        else if (callStatus === 'active') duration = Math.floor((Date.now() - callStartTime) / 1000); 
-        
-        if (callStatus !== 'ringing') sendCallLog(targetId, callData.type, duration, isMissed); 
-        endCallLocally(); 
+        const targetId = callStatus === 'ringing' ? callData.from : (currentChat?._id || callData?.toId); socket.emit('end_call', { to: targetId }); let isMissed = false, duration = 0; if (callStatus === 'calling' || callStatus === 'ringing') isMissed = true; else if (callStatus === 'active') duration = Math.floor((Date.now() - callStartTime) / 1000); if (callStatus !== 'ringing') sendCallLog(targetId, callData.type, duration, isMissed); endCallLocally(); 
     };
     
     const endCallLocally = () => { 
-        if (peerRef.current) peerRef.current.close(); 
-        peerRef.current = null; 
-        pendingCandidates.current = []; 
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(t => t.stop());
-            streamRef.current = null;
-        } 
-        setLocalStream(null); setRemoteStream(null); setCallStatus('idle'); setCallData(null); 
-        setIsMuted(false); setIsVideoOff(false); setCallStartTime(null); 
+        if (peerRef.current) peerRef.current.close(); peerRef.current = null; pendingCandidates.current = []; if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; } setLocalStream(null); setRemoteStream(null); setCallStatus('idle'); setCallData(null); setIsMuted(false); setIsVideoOff(false); setCallStartTime(null); 
     };
 
     const sendCallLog = async (receiverId, type, duration, isMissed) => { 
-        const messageData = { senderId: user.id, receiverId, text: '', type: 'call_log', callDuration: duration, isMissedCall: isMissed, fileName: type }; 
-        try { 
-            const res = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); 
-            const msgToSend = { ...res.data, senderName: user.fullName }; 
-            setMessages((prev) => [...prev, msgToSend]); 
-            socket.emit('send_message', msgToSend); 
-            setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); 
-        } catch (err) { console.error("Lỗi Call Log", err); } 
+        const messageData = { senderId: user.id, receiverId, text: '', type: 'call_log', callDuration: duration, isMissedCall: isMissed, fileName: type }; try { const res = await axios.post('https://dlua-chat-api.onrender.com/api/messages/send', messageData); const msgToSend = { ...res.data, senderName: user.fullName }; setMessages((prev) => [...prev, msgToSend]); socket.emit('send_message', msgToSend); setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100); } catch (err) { console.error("Lỗi Call Log"); } 
     };
 
-    const toggleAudio = () => { 
-        if (localStream) { 
-            const track = localStream.getAudioTracks()[0]; 
-            if (track) { track.enabled = !track.enabled; setIsMuted(!track.enabled); } 
-        } 
-    };
-
-    const toggleVideo = () => { 
-        if (localStream) { 
-            const track = localStream.getVideoTracks()[0]; 
-            if (track) { track.enabled = !track.enabled; setIsVideoOff(!track.enabled); } 
-        } 
-    };
+    const toggleAudio = () => { if (localStream) { const track = localStream.getAudioTracks()[0]; if (track) { track.enabled = !track.enabled; setIsMuted(!track.enabled); } } };
+    const toggleVideo = () => { if (localStream) { const track = localStream.getVideoTracks()[0]; if (track) { track.enabled = !track.enabled; setIsVideoOff(!track.enabled); } } };
 
     const switchCamera = async () => {
         if (!localStream) return;
         try {
-            const newMode = !isFrontCamera;
-            localStream.getVideoTracks().forEach(track => track.stop());
-
-            let stream;
-            try {
-                const videoConstraints = newMode ? { facingMode: "user" } : { facingMode: { exact: "environment" } };
-                stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
-            } catch (fallbackError) {
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: newMode ? "user" : "environment" } });
-            }
-            
-            const newVideoTrack = stream.getVideoTracks()[0];
-            const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
-            if (sender) sender.replaceTrack(newVideoTrack);
-            
-            const newLocalStream = new MediaStream([newVideoTrack, localStream.getAudioTracks()[0]]);
-            setLocalStream(newLocalStream);
-            setIsFrontCamera(newMode);
-            setIsScreenSharing(false); 
+            const newMode = !isFrontCamera; localStream.getVideoTracks().forEach(track => track.stop());
+            let stream; try { stream = await navigator.mediaDevices.getUserMedia({ video: newMode ? { facingMode: "user" } : { facingMode: { exact: "environment" } } }); } catch (fallbackError) { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: newMode ? "user" : "environment" } }); }
+            const newVideoTrack = stream.getVideoTracks()[0]; const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video'); if (sender) sender.replaceTrack(newVideoTrack);
+            const newLocalStream = new MediaStream([newVideoTrack, localStream.getAudioTracks()[0]]); setLocalStream(newLocalStream); setIsFrontCamera(newMode); setIsScreenSharing(false); 
         } catch (error) { toast.error("Thiết bị không hỗ trợ Camera này!"); }
     };
 
     const toggleScreenShare = async () => {
         if (!localStream) return;
-        if (!navigator.mediaDevices.getDisplayMedia || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
-            return toast.error("Chia sẻ màn hình chỉ hỗ trợ trên Máy tính/Laptop!");
-        }
-
+        if (!navigator.mediaDevices.getDisplayMedia || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) { return toast.error("Chia sẻ màn hình chỉ hỗ trợ trên PC!"); }
         try {
             if (isScreenSharing) {
-                localStream.getVideoTracks().forEach(track => track.stop());
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: isFrontCamera ? "user" : "environment" } });
-                const videoTrack = stream.getVideoTracks()[0];
-                
-                const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
-                if (sender) sender.replaceTrack(videoTrack);
-                
-                const updatedStream = new MediaStream([videoTrack, localStream.getAudioTracks()[0]]);
-                setLocalStream(updatedStream);
-                streamRef.current = updatedStream;
-                setIsScreenSharing(false);
+                localStream.getVideoTracks().forEach(track => track.stop()); const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: isFrontCamera ? "user" : "environment" } }); const videoTrack = stream.getVideoTracks()[0]; const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video'); if (sender) sender.replaceTrack(videoTrack);
+                const updatedStream = new MediaStream([videoTrack, localStream.getAudioTracks()[0]]); setLocalStream(updatedStream); streamRef.current = updatedStream; setIsScreenSharing(false);
             } else {
-                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                const screenTrack = screenStream.getVideoTracks()[0];
-                
-                const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
-                if (sender) sender.replaceTrack(screenTrack);
-                
-                localStream.getVideoTracks().forEach(track => track.stop());
-                
-                const updatedStream = new MediaStream([screenTrack, localStream.getAudioTracks()[0]]);
-                setLocalStream(updatedStream);
-                streamRef.current = updatedStream;
-                setIsScreenSharing(true);
-
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true }); const screenTrack = screenStream.getVideoTracks()[0]; const sender = peerRef.current.getSenders().find(s => s.track.kind === 'video'); if (sender) sender.replaceTrack(screenTrack);
+                localStream.getVideoTracks().forEach(track => track.stop()); const updatedStream = new MediaStream([screenTrack, localStream.getAudioTracks()[0]]); setLocalStream(updatedStream); streamRef.current = updatedStream; setIsScreenSharing(true);
                 screenTrack.onended = async () => { 
-                    setIsScreenSharing(false);
-                    try {
-                        const camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: isFrontCamera ? "user" : "environment" } });
-                        const camTrack = camStream.getVideoTracks()[0];
-                        const currentSender = peerRef.current.getSenders().find(s => s.track.kind === 'video');
-                        if (currentSender) currentSender.replaceTrack(camTrack);
-                        
-                        const revertedStream = new MediaStream([camTrack, localStream.getAudioTracks()[0]]);
-                        setLocalStream(revertedStream);
-                        streamRef.current = revertedStream;
-                    } catch (e) { toast.error("Vui lòng bật lại Camera!"); }
+                    setIsScreenSharing(false); try { const camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: isFrontCamera ? "user" : "environment" } }); const camTrack = camStream.getVideoTracks()[0]; const currentSender = peerRef.current.getSenders().find(s => s.track.kind === 'video'); if (currentSender) currentSender.replaceTrack(camTrack); const revertedStream = new MediaStream([camTrack, localStream.getAudioTracks()[0]]); setLocalStream(revertedStream); streamRef.current = revertedStream; } catch (e) { toast.error("Vui lòng bật lại Camera!"); }
                 };
             }
-        } catch (error) { 
-            if (error.name !== 'NotAllowedError') toast.error("Lỗi chia sẻ màn hình!"); 
-        }
+        } catch (error) { if (error.name !== 'NotAllowedError') toast.error("Lỗi chia sẻ màn hình!"); }
     };
 
-
     // ==========================================
-    // RENDER: GIAO DIỆN CHÍNH
+    // RENDER: UI COMPONENTS DCAM & DFEED
     // ==========================================
     if (!user) return null;
-    const combinedChatList = [...friends, ...groups].filter(f => {
-        if (!f || !f.fullName) return false;
-        return f.fullName.toLowerCase().includes((localChatSearch || '').toLowerCase());
-    });
+    const combinedChatList = [...friends, ...groups].filter(f => { if (!f || !f.fullName) return false; return f.fullName.toLowerCase().includes((localChatSearch || '').toLowerCase()); });
     const lastMessage = messages[messages.length - 1];
-    const isLastMessageRead = lastMessage && getSenderId(lastMessage.senderId) === user.id && (
-        (lastMessage.readBy && lastMessage.readBy.length > 0) || lastMessage.isRead
-    );
-    // 1. Khối Camera (Dcam)
+    const isLastMessageRead = lastMessage && getSenderId(lastMessage.senderId) === user.id && ((lastMessage.readBy && lastMessage.readBy.length > 0) || lastMessage.isRead);
+
+    // 1. Khối Camera (Dcam) CÓ VÒNG TRÒN PROGRESS
     const renderDcamUI = (isMobileOverlay = false) => (
         <div className={`bg-slate-900 text-white flex flex-col items-center relative border border-slate-800 shadow-2xl ${isMobileOverlay ? 'w-full max-w-sm p-6 rounded-[40px] animate-fade-in' : 'w-full h-full p-6 rounded-[24px]'}`}>
-            {/* THÊM DẤU X TẮT DCAM Ở CẢ PC VÀ MOBILE */}
             <button onClick={stopLocketCamera} className="absolute top-5 right-5 text-slate-400 hover:text-red-500 text-2xl font-black p-2 transition-colors z-20"><i className="ri-close-line"></i></button>
-            
             <div className="flex items-center gap-2 mb-6 w-full justify-center">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-400 to-orange-500 flex items-center justify-center text-white shadow-md"><i className="ri-camera-lens-line"></i></div>
                 <p className="text-sm font-black tracking-widest bg-clip-text text-transparent bg-gradient-to-r from-amber-400 to-orange-500">DCAM</p>
             </div>
-            
             {!isCameraOpen ? (
                 <button onClick={() => startLocketCamera(false)} className="w-full flex-1 min-h-[300px] rounded-[32px] border-2 border-dashed border-slate-700 flex flex-col items-center justify-center gap-4 hover:bg-slate-800/50 transition-colors group">
                     <div className="w-16 h-16 rounded-full bg-amber-900/30 text-amber-500 flex items-center justify-center text-3xl group-hover:scale-110 transition-transform"><i className="ri-camera-fill"></i></div>
@@ -1216,38 +952,24 @@ export default function Home() {
                 </button>
             ) : (
                 <>
-                    <div className={`w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center transition-all ${isRecording ? 'border-red-500 scale-105' : ''}`}>
-                        {!capturedImage && !capturedVideo ? (
-                            <video 
-                                ref={(el) => {
-                                    if (isMobileOverlay) mobileVideoRef.current = el;
-                                    else desktopVideoRef.current = el;
-                                    if (el && locketStream && el.srcObject !== locketStream) el.srcObject = locketStream;
-                                }} 
-                                autoPlay playsInline muted 
-                                className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} 
-                            />
-                        ) : capturedVideo ? (
-                            <video src={capturedVideo} autoPlay loop playsInline className="w-full h-full object-cover" />
-                        ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
-                        
-                        {/* Hiển thị đếm ngược khi quay */}
-                        {isRecording && <div className="absolute top-4 right-4 w-4 h-4 bg-red-500 rounded-full animate-ping"></div>}
+                    {/* HIỆU ỨNG VÒNG TRÒN CHẠY KHI ĐANG QUAY */}
+                    <div 
+                        className={`transition-all duration-[50ms] ${isRecording ? 'p-1.5 md:p-2 rounded-[46px] md:rounded-full shadow-[0_0_30px_rgba(245,158,11,0.5)] scale-105' : 'p-0 rounded-[40px] md:rounded-full scale-100'}`}
+                        style={{ background: isRecording ? `conic-gradient(from 0deg, #f59e0b ${recordingProgress}%, transparent ${recordingProgress}%)` : 'transparent' }}
+                    >
+                        <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
+                            {!capturedImage && !capturedVideo ? (
+                                <video ref={(el) => { if (isMobileOverlay) mobileVideoRef.current = el; else desktopVideoRef.current = el; if (el && locketStream && el.srcObject !== locketStream) el.srcObject = locketStream; }} autoPlay playsInline muted className={`w-full h-full object-cover transform ${isFrontCamera ? 'scale-x-[-1]' : ''}`} />
+                            ) : capturedVideo ? ( <video src={capturedVideo} autoPlay loop playsInline className="w-full h-full object-cover" /> ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
+                        </div>
                     </div>
 
                     {!capturedImage && !capturedVideo ? (
                         <div className="flex gap-6 items-center mt-8">
-                            <div className="w-10"></div> {/* Spacer để cân bằng */}
-                            {/* Nút chụp: Chạm để chụp, Giữ để quay */}
-                            <button 
-                                onMouseDown={startRecording} onMouseUp={stopRecording}
-                                onTouchStart={startRecording} onTouchEnd={stopRecording}
-                                onClick={captureLocketPhoto} 
-                                className="w-16 h-16 bg-white hover:bg-slate-200 border-4 border-slate-700 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-90 transition-all flex items-center justify-center group"
-                            >
+                            <div className="w-10"></div> 
+                            <button onMouseDown={startRecording} onMouseUp={stopRecording} onTouchStart={startRecording} onTouchEnd={stopRecording} onClick={captureLocketPhoto} className="w-16 h-16 bg-white hover:bg-slate-200 border-4 border-slate-700 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.2)] active:scale-90 transition-all flex items-center justify-center group">
                                 <div className={`w-12 h-12 rounded-full border-[3px] border-slate-300 transition-colors ${isRecording ? 'bg-red-500 border-red-400' : 'group-hover:border-slate-400'}`}></div>
                             </button>
-                            {/* Nút lật Camera */}
                             <button onClick={toggleDcamLens} className="w-10 h-10 bg-slate-800 text-slate-300 rounded-full text-lg hover:bg-slate-700 hover:text-white transition-all"><i className="ri-refresh-line"></i></button>
                         </div>
                     ) : (
@@ -1268,7 +990,6 @@ export default function Home() {
     const renderDfeedPosts = () => {
         if (posts.length === 0) return <div className="text-center text-slate-400 text-[14px] py-20 w-full font-medium flex flex-col items-center gap-4"><div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center"><i className="ri-image-circle-line text-4xl text-slate-300 dark:text-slate-600"></i></div>Chưa có khoảnh khắc nào. Hãy là người đầu tiên!</div>;
         return posts.map(post => {
-            // Xác định xem URL có phải là Video hay không (Dựa vào đuôi .mp4/webm)
             const isVideo = post.imageUrl && (post.imageUrl.includes('.mp4') || post.imageUrl.includes('.webm'));
             return (
                 <div key={post._id} className="bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-700/50 rounded-[32px] shadow-sm overflow-hidden flex flex-col mb-8 w-full transition-colors">
@@ -1282,40 +1003,23 @@ export default function Home() {
                         </div>
                         <div className="ml-auto flex items-center gap-2">
                             <span className="text-[11px] text-slate-400 font-medium">{new Date(post.createdAt).toLocaleDateString('vi-VN')}</span>
-                            {/* NÚT XÓA: CHỈ HIỆN KHI MÌNH LÀ CHỦ BÀI */}
-                            {post.author?._id === user.id && (
-                                <button onClick={() => handleDeletePost(post._id)} className="text-slate-300 hover:text-red-500 transition-colors p-1"><i className="ri-delete-bin-line text-lg"></i></button>
-                            )}
+                            {post.author?._id === user.id && <button onClick={() => handleDeletePost(post._id)} className="text-slate-300 hover:text-red-500 transition-colors p-1"><i className="ri-delete-bin-line text-lg"></i></button>}
                         </div>
                     </div>
                     <div className="w-full aspect-square bg-slate-100 dark:bg-slate-900 overflow-hidden relative group flex items-center justify-center">
-                        {isVideo ? (
-                            <video src={post.imageUrl} controls autoPlay loop muted playsInline className="w-full h-full object-cover" />
-                        ) : (
-                            <img src={post.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" alt="dfeed-post"/>
-                        )}
+                        {isVideo ? ( <video src={post.imageUrl} controls autoPlay loop muted playsInline className="w-full h-full object-cover" /> ) : ( <img src={post.imageUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" alt="dfeed-post"/> )}
                     </div>
                     <div className="p-4 md:p-5 flex flex-col gap-3">
                         <div className="flex items-center gap-4 text-[28px] md:text-[32px] text-slate-700 dark:text-slate-300">
-                            <button onClick={() => handleReactPost(post._id, '❤️')} className="active:scale-75 transition-transform hover:opacity-80">
-                                {post.reactions?.some(r => r.userId === user.id) ? '❤️' : '🤍'}
-                            </button>
+                            <button onClick={() => handleReactPost(post._id, '❤️')} className="active:scale-75 transition-transform hover:opacity-80">{post.reactions?.some(r => r.userId === user.id) ? '❤️' : '🤍'}</button>
                             <i className="ri-chat-3-line hover:opacity-80 cursor-pointer"></i>
                             <i className="ri-send-plane-line hover:opacity-80 cursor-pointer ml-auto"></i>
                         </div>
                         <span className="text-[13px] font-black text-slate-800 dark:text-white">{post.reactions?.length || 0} lượt thích</span>
-                        {post.caption && (
-                            <p className="text-[14px] text-slate-700 dark:text-slate-200 break-words leading-relaxed mt-1">
-                                <span className="font-black text-slate-900 dark:text-white mr-2">{post.author?.fullName}</span>{post.caption}
-                            </p>
-                        )}
+                        {post.caption && <p className="text-[14px] text-slate-700 dark:text-slate-200 break-words leading-relaxed mt-1"><span className="font-black text-slate-900 dark:text-white mr-2">{post.author?.fullName}</span>{post.caption}</p>}
                         {post.comments && post.comments.length > 0 && (
                             <div className="mt-2 space-y-2 max-h-32 overflow-y-auto scrollbar-hide py-1">
-                                {post.comments.map((c, i) => (
-                                    <div key={i} className="text-[13px] text-slate-600 dark:text-slate-300 break-words leading-relaxed">
-                                        <span className="font-bold text-slate-800 dark:text-white mr-2">{c.userId?.fullName}</span>{c.text}
-                                    </div>
-                                ))}
+                                {post.comments.map((c, i) => <div key={i} className="text-[13px] text-slate-600 dark:text-slate-300 break-words leading-relaxed"><span className="font-bold text-slate-800 dark:text-white mr-2">{c.userId?.fullName}</span>{c.text}</div>)}
                             </div>
                         )}
                         <form onSubmit={(e) => handleCommentPost(e, post._id)} className="flex items-center gap-3 mt-3">
@@ -1339,44 +1043,19 @@ export default function Home() {
             {viewingMedia && (
                 <div className="fixed inset-0 bg-black/95 z-[99999] flex flex-col items-center justify-center p-4 md:p-8 backdrop-blur-sm">
                     <div className="absolute top-6 right-6 flex gap-4 z-10">
-                        <button 
-                            onClick={async () => {
-                                try {
-                                    const response = await fetch(viewingMedia.url);
-                                    const blob = await response.blob();
-                                    const blobUrl = window.URL.createObjectURL(blob);
-                                    const link = document.createElement('a');
-                                    link.href = blobUrl;
-                                    link.download = viewingMedia.name || 'dlua-media';
-                                    document.body.appendChild(link);
-                                    link.click();
-                                    document.body.removeChild(link);
-                                    window.URL.revokeObjectURL(blobUrl);
-                                } catch (error) { window.open(viewingMedia.url, '_blank'); }
-                            }} 
-                            className="text-white bg-white/20 hover:bg-white/40 p-3 rounded-full transition-all flex items-center justify-center w-12 h-12" title="Tải xuống"
-                        >
-                            <i className="ri-download-2-fill text-2xl"></i>
-                        </button>
-                        <button 
-                            onClick={() => setViewingMedia(null)} 
-                            className="text-white bg-white/20 hover:bg-red-500 p-3 rounded-full transition-all flex items-center justify-center w-12 h-12" title="Đóng"
-                        >
-                            <i className="ri-close-line text-3xl"></i>
-                        </button>
+                        <button onClick={async () => { try { const response = await fetch(viewingMedia.url); const blob = await response.blob(); const blobUrl = window.URL.createObjectURL(blob); const link = document.createElement('a'); link.href = blobUrl; link.download = viewingMedia.name || 'dlua-media'; document.body.appendChild(link); link.click(); document.body.removeChild(link); window.URL.revokeObjectURL(blobUrl); } catch (error) { window.open(viewingMedia.url, '_blank'); } }} className="text-white bg-white/20 hover:bg-white/40 p-3 rounded-full transition-all flex items-center justify-center w-12 h-12" title="Tải xuống"><i className="ri-download-2-fill text-2xl"></i></button>
+                        <button onClick={() => setViewingMedia(null)} className="text-white bg-white/20 hover:bg-red-500 p-3 rounded-full transition-all flex items-center justify-center w-12 h-12" title="Đóng"><i className="ri-close-line text-3xl"></i></button>
                     </div>
                     {viewingMedia.type === 'image' ? ( <img src={viewingMedia.url} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl animate-fade-in" /> ) : ( <video src={viewingMedia.url} controls autoPlay className="max-w-full max-h-full rounded-lg shadow-2xl animate-fade-in" /> )}
                 </div>
             )}
 
-            {/* LỚP PHỦ CUỘC GỌI GIỮ NGUYÊN Y CŨ */}
+            {/* LỚP PHỦ CUỘC GỌI */}
             {callStatus !== 'idle' && (
                 <div className="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center backdrop-blur-md overflow-hidden touch-none">
                     {callStatus === 'ringing' && (
                         <div className="bg-white w-[85%] max-w-md p-8 md:p-10 rounded-[32px] md:rounded-[40px] flex flex-col items-center text-center shadow-2xl animate-pulse">
-                            <div className="w-20 h-20 md:w-28 md:h-28 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-4xl md:text-5xl mb-4 md:mb-6 shadow-lg shadow-blue-500/50">
-                                {callData?.type === 'video' ? '📹' : '📞'}
-                            </div>
+                            <div className="w-20 h-20 md:w-28 md:h-28 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-4xl md:text-5xl mb-4 md:mb-6 shadow-lg shadow-blue-500/50">{callData?.type === 'video' ? '📹' : '📞'}</div>
                             <h3 className="text-2xl md:text-3xl font-black text-slate-800 mb-2 truncate w-full">{callData.name}</h3>
                             <p className="text-slate-500 mb-8 md:mb-10 text-base md:text-lg">Đang gọi {callData.type === 'video' ? 'Video' : 'Thoại'}...</p>
                             <div className="flex gap-4 md:gap-6 w-full justify-center">
@@ -1387,12 +1066,7 @@ export default function Home() {
                     )}
                     {(callStatus === 'calling' || callStatus === 'active') && (
                         <div className="flex flex-col items-center w-full h-full relative">
-                            {callStatus === 'calling' && (
-                                <div className="absolute top-[10%] z-20 flex flex-col items-center pointer-events-none">
-                                    <p className="text-white text-xl md:text-2xl font-medium animate-pulse drop-shadow-md">Đang đổ chuông...</p>
-                                    <h2 className="text-white text-3xl md:text-4xl font-bold mt-2 drop-shadow-lg">{callData?.name}</h2>
-                                </div>
-                            )}
+                            {callStatus === 'calling' && <div className="absolute top-[10%] z-20 flex flex-col items-center pointer-events-none"><p className="text-white text-xl md:text-2xl font-medium animate-pulse drop-shadow-md">Đang đổ chuông...</p><h2 className="text-white text-3xl md:text-4xl font-bold mt-2 drop-shadow-lg">{callData?.name}</h2></div>}
                             <div className="w-full h-full relative">
                                 {callData?.type === 'video' ? (
                                     <div className="w-full h-full bg-black relative flex items-center justify-center">
@@ -1404,15 +1078,10 @@ export default function Home() {
                                     </div>
                                 ) : (
                                     <div className="flex flex-col md:flex-row gap-8 md:gap-16 items-center justify-center w-full h-full pb-20">
-                                        <div className={`w-28 h-28 md:w-40 md:h-40 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-4xl md:text-5xl text-white shadow-[0_0_50px_rgba(99,102,241,0.5)] ${callStatus === 'calling' ? 'animate-pulse' : ''}`}>
-                                            {user?.avatar ? <img src={user.avatar} className="w-full h-full rounded-full object-cover"/> : user?.fullName[0]}
-                                        </div>
+                                        <div className={`w-28 h-28 md:w-40 md:h-40 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-4xl md:text-5xl text-white shadow-[0_0_50px_rgba(99,102,241,0.5)] ${callStatus === 'calling' ? 'animate-pulse' : ''}`}>{user?.avatar ? <img src={user.avatar} className="w-full h-full rounded-full object-cover"/> : user?.fullName[0]}</div>
                                         <div className="text-3xl md:text-4xl text-white animate-pulse md:animate-bounce rotate-90 md:rotate-0">〰️</div>
-                                        <div className={`w-28 h-28 md:w-40 md:h-40 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full flex items-center justify-center text-4xl md:text-5xl text-white shadow-[0_0_50px_rgba(59,130,246,0.5)] ${callStatus === 'calling' ? 'animate-pulse' : ''}`}>
-                                            {callData?.name ? callData.name[0] : currentChat?.fullName[0]}
-                                        </div>
-                                        <audio ref={remoteVideoRef} autoPlay />
-                                        <audio ref={myVideoRef} autoPlay muted />
+                                        <div className={`w-28 h-28 md:w-40 md:h-40 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full flex items-center justify-center text-4xl md:text-5xl text-white shadow-[0_0_50px_rgba(59,130,246,0.5)] ${callStatus === 'calling' ? 'animate-pulse' : ''}`}>{callData?.name ? callData.name[0] : currentChat?.fullName[0]}</div>
+                                        <audio ref={remoteVideoRef} autoPlay /><audio ref={myVideoRef} autoPlay muted />
                                     </div>
                                 )}
                             </div>
@@ -1623,7 +1292,11 @@ export default function Home() {
                             {/* 2. ĐIỆN THOẠI: Dfeed + Nút nổi Dcam */}
                             <div className="flex md:hidden flex-col h-full w-full">
                                 <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">Dfeed</h2>
+                                    {/* ĐÃ SỬA: TITLE DFEED MOBILE ĐẸP HƠN */}
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-3xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-amber-500 to-rose-500">Dfeed</h2>
+                                        <i className="ri-fire-fill text-amber-500 text-xl animate-pulse"></i>
+                                    </div>
                                 </div>
                                 <div className="flex-1 overflow-y-auto scrollbar-hide pb-20">
                                     {renderDfeedPosts()}
@@ -1654,8 +1327,12 @@ export default function Home() {
                 {(activeTab === 'locket') && (
                     <div className="hidden md:flex flex-col w-full h-full bg-[#f8fafc] dark:bg-slate-900 animate-fade-in">
                         <div className="px-8 pt-8 pb-4">
-                            <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Dfeed</h2>
-                            <p className="text-slate-500 text-sm mt-1">Khám phá khoảnh khắc của bạn bè</p>
+                            {/* ĐÃ SỬA: TITLE DFEED PC ĐẸP HƠN */}
+                            <div className="flex items-center gap-2 mb-1">
+                                <h2 className="text-4xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500">Dfeed</h2>
+                                <i className="ri-fire-fill text-amber-500 text-3xl animate-pulse"></i>
+                            </div>
+                            <p className="text-slate-500 text-sm font-medium">Khám phá khoảnh khắc của bạn bè</p>
                         </div>
                         <div className="flex-1 overflow-y-auto scrollbar-hide flex flex-col items-center px-4 pb-10">
                             <div className="w-full max-w-xl mt-4">

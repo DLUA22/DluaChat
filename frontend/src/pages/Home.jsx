@@ -607,7 +607,6 @@ export default function Home() {
 
     // 4.2 Giữ nút để Quay Video 5s
     const startRecording = () => {
-        // Kiểm tra xem camera đã sẵn sàng chưa, và tránh quay 2 lần
         if (!locketStream || !locketStream.active) return;
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") return;
 
@@ -621,8 +620,11 @@ export default function Home() {
             };
             
             mediaRecorder.onstop = () => {
-                const blob = new Blob(videoChunksRef.current, { type: 'video/mp4' });
+                // SỬA LỖI ĐEN THUI: Tự động lấy đúng đuôi video mà điện thoại đang dùng
+                const mimeType = mediaRecorderRef.current.mimeType || 'video/webm';
+                const blob = new Blob(videoChunksRef.current, { type: mimeType });
                 setCapturedVideo(window.URL.createObjectURL(blob));
+                
                 if (locketStream) locketStream.getTracks().forEach(track => track.stop());
                 setIsRecording(false);
                 clearInterval(progressIntervalRef.current); setRecordingProgress(0);
@@ -651,28 +653,24 @@ export default function Home() {
     };
 
     const stopRecording = () => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-            mediaRecorderRef.current.stop();
-        }
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") mediaRecorderRef.current.stop();
     };
 
     // 4.3 THUẬT TOÁN TÁCH BIỆT CHẠM (CHỤP) VÀ GIỮ (QUAY)
     const handlePointerDown = (e) => {
-        // Nhấn xuống: Đợi 0.3s. Nếu người dùng giữ lâu hơn 0.3s thì gọi hàm Quay Video
         pressTimerRef.current = setTimeout(() => {
             startRecording();
-            pressTimerRef.current = null; // Đánh dấu là đã bắt đầu quay
+            pressTimerRef.current = null; 
         }, 300);
     };
 
     const handlePointerUp = (e) => {
+        e.preventDefault();
         if (pressTimerRef.current) {
-            // Trường hợp 1: Nhả tay ra trước 0.3s -> Đây là thao tác CHẠM -> Chụp ảnh!
             clearTimeout(pressTimerRef.current);
             pressTimerRef.current = null;
             captureLocketPhoto();
         } else {
-            // Trường hợp 2: Nhả tay ra sau 0.3s -> Đang quay video -> Dừng quay!
             stopRecording();
         }
     };
@@ -686,7 +684,7 @@ export default function Home() {
             const response = await fetch(mediaUrl);
             const blob = await response.blob();
             const formData = new FormData();
-            formData.append('file', blob, capturedVideo ? 'locket.mp4' : 'locket.jpg');
+            formData.append('file', blob, capturedVideo ? 'locket.webm' : 'locket.jpg');
             
             const uploadRes = await axios.post('https://dlua-chat-api.onrender.com/api/messages/upload', formData);
             await axios.post('https://dlua-chat-api.onrender.com/api/posts/create', { author: user.id, imageUrl: uploadRes.data.url, caption: locketCaption });

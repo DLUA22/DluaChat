@@ -561,11 +561,6 @@ export default function Home() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480, facingMode: "user" }, audio: false });
             setLocketStream(stream);
-            setTimeout(() => {
-                // Nhồi video vào cả 2 ống hút
-                if (desktopVideoRef.current) desktopVideoRef.current.srcObject = stream;
-                if (mobileVideoRef.current) mobileVideoRef.current.srcObject = stream;
-            }, 100);
         } catch (err) {
             toast.error("Không thể truy cập Camera. Bạn có thể chọn file ảnh tải lên!");
         }
@@ -585,7 +580,11 @@ export default function Home() {
     const captureLocketPhoto = () => {
         const isDesktop = window.innerWidth >= 768;
         const video = isDesktop ? desktopVideoRef.current : mobileVideoRef.current;
-        if (!video) return;
+        
+        if (!video) {
+            toast.error("Lỗi: Không tìm thấy luồng Camera!");
+            return;
+        }
         const canvas = document.createElement('canvas');
         canvas.width = 480;
         canvas.height = 480;
@@ -1158,7 +1157,17 @@ export default function Home() {
                 <>
                     <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
                         {!capturedImage ? (
-                            <video ref={isMobileOverlay ? mobileVideoRef : desktopVideoRef} autoPlay playsInline muted className="w-full h-full object-cover transform scale-x-[-1]" />
+                            <video 
+                                ref={(el) => {
+                                    if (isMobileOverlay) mobileVideoRef.current = el;
+                                    else desktopVideoRef.current = el;
+                                    if (el && locketStream && el.srcObject !== locketStream) {
+                                        el.srcObject = locketStream;
+                                    }
+                                }} 
+                                autoPlay playsInline muted 
+                                className="w-full h-full object-cover transform scale-x-[-1]" 
+                            />
                         ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                     </div>
 

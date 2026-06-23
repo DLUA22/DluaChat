@@ -772,6 +772,28 @@ export default function Home() {
         setPlayingGame(game);
         try { await axios.put(`https://dlua-chat-api.onrender.com/api/games/play/${game._id}`); } catch (err) {}
     };
+    const handleDeleteGame = (gameId) => {
+        toast((t) => (
+            <div className="flex flex-col gap-3 min-w-[250px] p-2">
+                <div className="flex flex-col items-center gap-2">
+                    <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center text-red-500 text-2xl"><i className="ri-delete-bin-line"></i></div>
+                    <p className="text-[15px] font-bold text-slate-800 text-center">Xóa Game này?</p>
+                    <p className="text-xs text-slate-500 text-center px-2">Game sẽ bị gỡ vĩnh viễn khỏi Game Hub.</p>
+                </div>
+                <div className="flex gap-2 mt-4">
+                    <button onClick={async () => {
+                        toast.dismiss(t.id);
+                        try {
+                            await axios.delete(`https://dlua-chat-api.onrender.com/api/games/delete/${gameId}`, { data: { userId: user.id } });
+                            setGames(prev => prev.filter(g => g._id !== gameId));
+                            toast.success("Đã xóa Game!");
+                        } catch (err) { toast.error("Lỗi khi xóa Game"); }
+                    }} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-xl text-sm font-bold shadow-md transition-colors">Xóa luôn</button>
+                    <button onClick={() => toast.dismiss(t.id)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 py-2 rounded-xl text-sm font-bold transition-colors">Hủy</button>
+                </div>
+            </div>
+        ), { id: `delete-game-${gameId}`, duration: Infinity, position: 'top-center' });
+    };
 
     const handleScroll = (e) => { if (e.target.scrollTop === 0 && hasMore && !isLoadingMore) setPage(prev => prev + 1); };
     const handleInstallClick = async () => {
@@ -1443,6 +1465,14 @@ export default function Home() {
                                 {games.map(game => (
                                     <div key={game._id} className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-sm border border-slate-100 dark:border-slate-700 active:scale-95 transition-transform" onClick={() => handlePlayGame(game)}>
                                         <div className="aspect-square bg-slate-100 dark:bg-slate-700 relative">
+                                            {game.author?._id === user.id && (
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteGame(game._id); }} 
+                                                    className="absolute top-2 left-2 w-7 h-7 bg-red-500/80 hover:bg-red-600 backdrop-blur rounded-lg flex items-center justify-center text-white transition-colors z-20 shadow-md"
+                                                >
+                                                    <i className="ri-delete-bin-line text-sm"></i>
+                                                </button>
+                                            )}
                                             {game.thumbnail ? <img src={game.thumbnail} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-4xl">🎮</div>}
                                             <div className="absolute top-2 right-2 bg-black/50 backdrop-blur text-white text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1"><i className="ri-play-fill"></i> {game.plays || 0}</div>
                                         </div>
@@ -1541,6 +1571,14 @@ export default function Home() {
                                 {games.map(game => (
                                     <div key={game._id} className="bg-white dark:bg-slate-800 rounded-3xl overflow-hidden shadow-sm hover:shadow-2xl transition-all group cursor-pointer border border-slate-100 dark:border-slate-700" onClick={() => handlePlayGame(game)}>
                                         <div className="aspect-[4/3] bg-slate-100 dark:bg-slate-700 relative overflow-hidden">
+                                            {game.author?._id === user.id && (
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteGame(game._id); }} 
+                                                    className="absolute top-3 left-3 w-8 h-8 bg-red-500/90 hover:bg-red-600 backdrop-blur rounded-xl flex items-center justify-center text-white transition-colors z-20 shadow-md opacity-0 group-hover:opacity-100"
+                                                >
+                                                    <i className="ri-delete-bin-line"></i>
+                                                </button>
+                                            )}
                                             {game.thumbnail ? <img src={game.thumbnail} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : <div className="w-full h-full flex items-center justify-center text-5xl">🎮</div>}
                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                                                 <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-indigo-600 text-2xl shadow-lg pl-1"><i className="ri-play-fill"></i></div>

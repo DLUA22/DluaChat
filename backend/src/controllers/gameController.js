@@ -43,3 +43,18 @@ exports.playGame = async (req, res) => {
         res.status(500).json({ message: "Lỗi cập nhật lượt chơi" });
     }
 };
+exports.deleteGame = async (req, res) => {
+    try {
+        const { gameId } = req.params;
+        const { userId } = req.body; 
+        const game = await Game.findById(gameId);
+        if (!game) return res.status(404).json({ message: "Không tìm thấy game" });
+        if (game.author.toString() !== userId) {
+            return res.status(403).json({ message: "Bạn không có quyền xóa game này!" });
+        }
+        await Game.findByIdAndDelete(gameId);
+        res.status(200).json({ message: "Đã xóa game thành công" });
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi khi xóa game", error });
+    }
+};

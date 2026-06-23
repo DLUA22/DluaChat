@@ -1200,7 +1200,7 @@ export default function Home() {
         (lastMessage.readBy && lastMessage.readBy.length > 0) || lastMessage.isRead
     );
     // 1. Khối Camera (Dcam)
-    const renderDcamUI = (isMobileOverlay) => (
+    const renderDcamUI = (isMobileOverlay = false) => (
         <div className={`bg-slate-900 text-white flex flex-col items-center relative border border-slate-800 shadow-2xl ${isMobileOverlay ? 'w-full max-w-sm p-6 rounded-[40px] animate-fade-in' : 'w-full h-full p-6 rounded-[24px]'}`}>
             {/* THÊM DẤU X TẮT DCAM Ở CẢ PC VÀ MOBILE */}
             <button onClick={stopLocketCamera} className="absolute top-5 right-5 text-slate-400 hover:text-red-500 text-2xl font-black p-2 transition-colors z-20"><i className="ri-close-line"></i></button>
@@ -1213,7 +1213,7 @@ export default function Home() {
             {!isCameraOpen ? (
                 <button onClick={() => startLocketCamera(false)} className="w-full flex-1 min-h-[300px] rounded-[32px] border-2 border-dashed border-slate-700 flex flex-col items-center justify-center gap-4 hover:bg-slate-800/50 transition-colors group">
                     <div className="w-16 h-16 rounded-full bg-amber-900/30 text-amber-500 flex items-center justify-center text-3xl group-hover:scale-110 transition-transform"><i className="ri-camera-fill"></i></div>
-                    <p className="text-sm font-bold text-slate-400">Bật Dcam</p>
+                    <p className="text-sm font-bold text-slate-400">Bật Dcam để chụp ảnh</p>
                 </button>
             ) : (
                 <>

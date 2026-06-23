@@ -1016,10 +1016,15 @@ export default function Home() {
                                 <video 
                                     key={capturedVideo} 
                                     src={capturedVideo} 
+                                    ref={(el) => {
+                                        if (el) {
+                                            el.defaultMuted = true;
+                                            el.muted = true;
+                                        }
+                                    }}
                                     autoPlay loop muted playsInline 
-                                    controls 
-                                    onLoadedData={(e) => e.target.play().catch(()=>{})}
-                                    className="w-[120%] h-[120%] object-cover pointer-events-none bg-black" 
+                                    onLoadedData={(e) => e.target.play().catch(() => {})}
+                                    className="w-full h-full object-cover pointer-events-none bg-slate-800" 
                                 /> 
                             ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                         </div>

@@ -121,7 +121,8 @@ export default function Home() {
     const [capturedImage, setCapturedImage] = useState(null);
     const [commentInputs, setCommentInputs] = useState({});
     const [locketStream, setLocketStream] = useState(null);
-    const locketVideoRef = useRef(null);
+    const desktopVideoRef = useRef(null);
+    const mobileVideoRef = useRef(null);
 
     // 4. STATES: WebRTC & Call
     const [callStatus, setCallStatus] = useState('idle'); 
@@ -561,7 +562,9 @@ export default function Home() {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480, facingMode: "user" }, audio: false });
             setLocketStream(stream);
             setTimeout(() => {
-                if (locketVideoRef.current) locketVideoRef.current.srcObject = stream;
+                // Nhồi video vào cả 2 ống hút
+                if (desktopVideoRef.current) desktopVideoRef.current.srcObject = stream;
+                if (mobileVideoRef.current) mobileVideoRef.current.srcObject = stream;
             }, 100);
         } catch (err) {
             toast.error("Không thể truy cập Camera. Bạn có thể chọn file ảnh tải lên!");
@@ -580,8 +583,9 @@ export default function Home() {
 
     // 4. Bấm nút Chụp ảnh
     const captureLocketPhoto = () => {
-        if (!locketVideoRef.current) return;
-        const video = locketVideoRef.current;
+        const isDesktop = window.innerWidth >= 768;
+        const video = isDesktop ? desktopVideoRef.current : mobileVideoRef.current;
+        if (!video) return;
         const canvas = document.createElement('canvas');
         canvas.width = 480;
         canvas.height = 480;
@@ -1154,7 +1158,7 @@ export default function Home() {
                 <>
                     <div className="w-64 h-64 md:w-60 md:h-60 rounded-[40px] md:rounded-full overflow-hidden bg-black border-4 border-slate-800 shadow-inner relative flex items-center justify-center">
                         {!capturedImage ? (
-                            <video ref={locketVideoRef} autoPlay playsInline muted className="w-full h-full object-cover transform scale-x-[-1]" />
+                            <video ref={isMobileOverlay ? mobileVideoRef : desktopVideoRef} autoPlay playsInline muted className="w-full h-full object-cover transform scale-x-[-1]" />
                         ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                     </div>
 

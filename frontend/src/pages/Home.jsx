@@ -556,12 +556,15 @@ export default function Home() {
 
     // 2. Mở Camera ống kính tròn 
     const startLocketCamera = async () => {
+        console.log("-> Bấm nút bật Dcam...");
         setCapturedImage(null);
         setIsCameraOpen(true);
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 480, height: 480, facingMode: "user" }, audio: false });
+            console.log("-> Đã lấy được quyền Camera từ hệ điều hành!");
             setLocketStream(stream);
         } catch (err) {
+            console.error("Lỗi xin quyền Camera:", err);
             toast.error("Không thể truy cập Camera. Cấp quyền hoặc tải ảnh lên!");
         }
     };
@@ -582,6 +585,7 @@ export default function Home() {
         const video = isDesktop ? desktopVideoRef.current : mobileVideoRef.current;
         
         if (!video) {
+            console.error("LỖI CHỤP: Không tìm thấy khung video đang chạy!");
             toast.error("Lỗi: Không tìm thấy luồng Camera!");
             return;
         }
@@ -1162,6 +1166,7 @@ export default function Home() {
                                 ref={isMobileOverlay ? mobileVideoRef : desktopVideoRef} 
                                 autoPlay playsInline muted 
                                 className="w-full h-full object-cover transform scale-x-[-1]" 
+                                onPlay={() => console.log("✅ Thẻ Video báo cáo: ĐANG PHÁT HÌNH!")}
                             />
                         ) : ( <img src={capturedImage} className="w-full h-full object-cover" alt="captured"/> )}
                     </div>

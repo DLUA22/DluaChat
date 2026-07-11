@@ -54,11 +54,7 @@ export default function SSOAuth() {
     };
 
     const handleDeny = () => {
-        if (redirectUri) {
-            window.location.href = `${redirectUri}?error=access_denied`;
-        } else {
-            navigate('/');
-        }
+        window.location.href = 'https://dlua-chat.vercel.app'; 
     };
 
     if (!user) return null;

@@ -18,6 +18,6 @@ router.post('/unfriend', unfriend);
 router.post('/change-password', changePassword);
 router.post('/update-avatar', updateAvatar);
 router.get('/sys-admin/migrate-friends', migrateFriends);
-router.post('/sso-authorize', authController.generateSSOToken);
+router.post('/sso-authorize', generateSSOToken);
 
 module.exports = router;

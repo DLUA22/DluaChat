@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const bcrypt = require('bcrypt');
 const FriendRequest = require('../models/FriendRequest');
+const jwt = require('jsonwebtoken');
 
 // 1. Đăng ký
 exports.register = async (req, res) => {

@@ -193,3 +193,21 @@ exports.migrateFriends = async (req, res) => {
         res.status(500).json({ message: "Lỗi convert dữ liệu", error: error.message });
     }
 };
+
+exports.generateSSOToken = async (req, res) => {
+    try {
+        const { userId, redirectUri, appName } = req.body;
+        const user = await User.findById(userId).select('_id fullName uniqueName avatar email');
+        if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng" });
+        const ssoToken = jwt.sign(
+            { id: user._id, fullName: user.fullName, uniqueName: user.uniqueName, avatar: user.avatar, email: user.email },
+            process.env.JWT_SECRET || 'DluaChat_Secret_Key',
+            { expiresIn: '5m' }
+        );
+        const finalRedirectUrl = `${redirectUri}?sso_token=${ssoToken}`;
+        res.status(200).json({ redirectUrl: finalRedirectUrl });
+
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi tạo SSO Token", error });
+    }
+};

@@ -6,6 +6,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import SplashScreen from "./pages/SplashScreen";
+import SSOAuth from './pages/SSOAuth';
 
 function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -23,6 +24,7 @@ function App() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/oauth/authorize" element={<SSOAuth />} />
         </Routes>
       </div>
     </BrowserRouter>

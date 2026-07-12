@@ -32,23 +32,19 @@ export default function SSOAuth() {
     const handleAccept = async () => {
         if (!redirectUri) return;
         setIsLoading(true);
-        const loadingToast = toast.loading("Đang ủy quyền...");
-
+        const loadingToast = toast.loading("Đang ủy quyền an toàn...");
         try {
-            const res = await axios.post('https://dlua-chat-api.onrender.com/api/auth/sso-authorize', {
+            const res = await axios.post('https://dlua-chat-api.onrender.com/api/auth/oauth/authorize', {
                 userId: user.id,
-                appName: appName,
-                redirectUri: redirectUri
-            });
-            
-            toast.success("Kết nối thành công! Đang chuyển hướng...", { id: loadingToast });
-            
+                redirectUri: redirectUri,
+                clientId: 'dluamusic_client_id'
+            });         
+            toast.success("Cấp quyền thành công! Đang chuyển hướng...", { id: loadingToast });         
             setTimeout(() => {
-                window.location.href = res.data.redirectUrl;
+                window.location.href = res.data.redirectUrl; 
             }, 1000);
-
         } catch (err) {
-            toast.error("Lỗi xác thực. Vui lòng thử lại!", { id: loadingToast });
+            toast.error("Lỗi cấp quyền. Vui lòng thử lại!", { id: loadingToast });
             setIsLoading(false);
         }
     };

@@ -2,6 +2,8 @@ const User = require('../models/User');
 const bcrypt = require('bcrypt');
 const FriendRequest = require('../models/FriendRequest');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto'); 
+const OAuthCode = require('../models/OAuthCode');
 
 // 1. Đăng ký
 exports.register = async (req, res) => {
@@ -195,20 +197,52 @@ exports.migrateFriends = async (req, res) => {
     }
 };
 
-exports.generateSSOToken = async (req, res) => {
+exports.generateAuthCode = async (req, res) => {
     try {
-        const { userId, redirectUri, appName } = req.body;
-        const user = await User.findById(userId).select('_id fullName uniqueName avatar email');
-        if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng" });
-        const ssoToken = jwt.sign(
-            { id: user._id, fullName: user.fullName, uniqueName: user.uniqueName, avatar: user.avatar, email: user.email },
-            process.env.JWT_SECRET || 'DluaChat_Secret_Key',
-            { expiresIn: '5m' }
-        );
-        const finalRedirectUrl = `${redirectUri}?sso_token=${ssoToken}`;
+        const { userId, redirectUri, clientId } = req.body;
+        if (clientId !== 'dluamusic_client_id') {
+            return res.status(401).json({ message: "Ứng dụng không được phép kết nối!" });
+        }
+        const code = crypto.randomBytes(16).toString('hex');
+        const newCode = new OAuthCode({ code, userId });
+        await newCode.save();
+        const finalRedirectUrl = `${redirectUri}?code=${code}`;
         res.status(200).json({ redirectUrl: finalRedirectUrl });
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi tạo Authorization Code", error });
+    }
+};
+
+// 12. API Đổi Code lấy Token (Dành cho Backend DluaMusic gọi ngầm)
+exports.exchangeToken = async (req, res) => {
+    try {
+        const { code, client_id, client_secret } = req.body;
+        if (client_id !== 'dluamusic_client_id' || client_secret !== 'dluamusic_super_secret_123!@#') {
+            return res.status(401).json({ message: "Thông tin Client không hợp lệ!" });
+        }
+        const authCode = await OAuthCode.findOne({ code });
+        if (!authCode) {
+            return res.status(400).json({ message: "Mã ủy quyền không hợp lệ hoặc đã hết hạn!" });
+        }
+        const user = await User.findById(authCode.userId);
+        await OAuthCode.findByIdAndDelete(authCode._id);
+        const accessToken = jwt.sign(
+            { id: user._id },
+            process.env.JWT_SECRET || 'DluaChat_Secret_Key',
+            { expiresIn: '7d' }
+        );
+        res.status(200).json({
+            access_token: accessToken,
+            user: {
+                id: user._id,
+                fullName: user.fullName,
+                username: user.username,
+                uniqueName: user.uniqueName,
+                avatar: user.avatar
+            }
+        });
 
     } catch (error) {
-        res.status(500).json({ message: "Lỗi tạo SSO Token", error });
+        res.status(500).json({ message: "Lỗi đổi Token", error });
     }
 };

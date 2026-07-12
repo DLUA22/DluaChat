@@ -4,7 +4,7 @@ const {
     register, login, searchUser, 
     sendFriendRequest, getPendingRequests, respondRequest, 
     getFriends, unfriend, changePassword, updateAvatar,
-    migrateFriends, generateSSOToken 
+    migrateFriends, generateAuthCode, exchangeToken 
 } = require('../controllers/authController');
 
 router.post('/register', register);
@@ -18,6 +18,7 @@ router.post('/unfriend', unfriend);
 router.post('/change-password', changePassword);
 router.post('/update-avatar', updateAvatar);
 router.get('/sys-admin/migrate-friends', migrateFriends);
-router.post('/sso-authorize', generateSSOToken);
+router.post('/oauth/authorize', generateAuthCode); 
+router.post('/oauth/token', exchangeToken);
 
 module.exports = router;
